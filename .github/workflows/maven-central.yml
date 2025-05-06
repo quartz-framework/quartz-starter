@@ -29,8 +29,8 @@ jobs:
         run: |
           if [[ "${{ github.event.inputs.releaseversion }}" == *-SNAPSHOT ]]; then
             echo "Deploying SNAPSHOT version"
-            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
+            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy -Prelease --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
           else
             echo "Deploying RELEASE version"
-            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy -P release --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
+            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy -Prelease --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
           fi
