@@ -16,7 +16,7 @@ import xyz.quartzframework.core.context.annotation.ContextBootstrapper;
 @NoProxy
 @ContextBootstrapper
 @RequiredArgsConstructor(onConstructor = @__(@Inject))
-public class SpigotCommandContextBootstrapper {
+public class BungeeCommandContextBootstrapper {
 
     private final PluginBeanFactory pluginBeanFactory;
 
