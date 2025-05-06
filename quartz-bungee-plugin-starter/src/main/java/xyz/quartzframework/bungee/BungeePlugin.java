@@ -38,4 +38,8 @@ public abstract class BungeePlugin extends Plugin implements QuartzPlugin<Plugin
         return this;
     }
 
+    @Override
+    public String getName() {
+        return getDescription().getName();
+    }
 }
