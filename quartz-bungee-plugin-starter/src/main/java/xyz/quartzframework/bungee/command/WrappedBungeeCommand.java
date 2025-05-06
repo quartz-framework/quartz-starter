@@ -3,6 +3,7 @@ package xyz.quartzframework.bungee.command;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import net.md_5.bungee.api.CommandSender;
+import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.plugin.Command;
 import net.md_5.bungee.api.plugin.TabExecutor;
 import picocli.CommandLine.Model.CommandSpec;
@@ -16,7 +17,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
-class WrapperBukkitCommand extends Command implements TabExecutor {
+class WrappedBungeeCommand extends Command implements TabExecutor {
 
     private final BungeeSession session;
 
@@ -24,7 +25,7 @@ class WrapperBukkitCommand extends Command implements TabExecutor {
 
     private final CommandSpec commandSpec;
 
-    protected WrapperBukkitCommand(CommandSpec commandSpec, BungeeSession context, CommandExecutor commandExecutor) {
+    protected WrappedBungeeCommand(CommandSpec commandSpec, BungeeSession context, CommandExecutor commandExecutor) {
         super(commandSpec.name());
         this.commandSpec = commandSpec;
         this.session = context;
@@ -34,9 +35,13 @@ class WrapperBukkitCommand extends Command implements TabExecutor {
     @Override
     public void execute(CommandSender sender, String[] args) {
         session.runWithSender(sender, () -> {
-            val command = prepend(args, args[0]);
+            val command = prepend(args, getName());
             val result = commandExecutor.execute(command);
-            result.getOutput().forEach(sender::sendMessage);
+            result.getOutput().forEach(s -> {
+                val text = new TextComponent();
+                text.setText(s);
+                sender.sendMessage(text);
+            });
             return result.isExists();
         });
     }
