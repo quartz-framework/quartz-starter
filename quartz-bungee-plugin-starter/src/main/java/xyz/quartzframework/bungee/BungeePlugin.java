@@ -4,7 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import net.md_5.bungee.api.plugin.Plugin;
 import xyz.quartzframework.core.QuartzPlugin;
-import xyz.quartzframework.core.annotation.NoProxy;
+import xyz.quartzframework.core.bean.annotation.NoProxy;
 import xyz.quartzframework.core.context.AbstractQuartzContext;
 
 @NoProxy

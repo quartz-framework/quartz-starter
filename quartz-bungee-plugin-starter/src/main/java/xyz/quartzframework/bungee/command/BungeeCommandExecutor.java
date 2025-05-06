@@ -6,12 +6,12 @@ import lombok.val;
 import net.md_5.bungee.api.ChatColor;
 import org.apache.commons.lang3.StringUtils;
 import picocli.CommandLine;
-import xyz.quartzframework.core.annotation.NoProxy;
-import xyz.quartzframework.core.annotation.Property;
+import xyz.quartzframework.core.bean.annotation.NoProxy;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
 import xyz.quartzframework.core.command.CommandExecutor;
 import xyz.quartzframework.core.command.CommandResult;
 import xyz.quartzframework.core.command.picocli.CommandLineDefinition;
+import xyz.quartzframework.core.property.Property;
 
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -28,16 +28,16 @@ public class BungeeCommandExecutor implements CommandExecutor {
 
     private final CommandLineDefinition commandLineDefinition;
 
-    @Property("${bungee.messages.command_error:&c%s}")
+    @Property("${quartz.messages.command_error:&c%s}")
     private String commandErrorMessage;
 
-    @Property("${bungee.messages.missing_parameter_error:&cMissing parameter: %s}")
+    @Property("${quartz.messages.missing_parameter_error:&cMissing parameter: %s}")
     private String missingParameterErrorMessage;
 
-    @Property("${bungee.messages.parameter_error:&cInvalid parameter: %s}")
+    @Property("${quartz.messages.parameter_error:&cInvalid parameter: %s}")
     private String parameterErrorMessage;
 
-    @Property("${bungee.commands.enable_cache:false}")
+    @Property("${quartz.commands.enable_cache:false}")
     private boolean cacheEnabled;
 
     private CommandLine commandLineCache;
