@@ -76,7 +76,7 @@ public class BungeeCommandService implements CommandService {
     @Override
     @SneakyThrows
     public void registerCommand(CommandSpec commandSpec) {
-        val command = new WrapperBukkitCommand(commandSpec, session, commandExecutor);
+        val command = new WrappedBungeeCommand(commandSpec, session, commandExecutor);
         pluginManager.registerCommand(plugin, command);
     }
 
