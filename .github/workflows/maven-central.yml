@@ -1,0 +1,36 @@
+name: release-to-maven-central
+
+on:
+  workflow_dispatch:
+    inputs:
+      releaseversion:
+        description: 'Release version'
+        required: true
+        default: '0.0.1'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Will start a Maven Central upload with version ${{ github.event.inputs.releaseversion }}"
+      - uses: actions/checkout@v2
+      - name: Set project version
+        run: mvn versions:set "-DnewVersion=${{ github.event.inputs.releaseversion }}"
+      - name: Import GPG key
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      - name: Build and deploy
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [[ "${{ github.event.inputs.releaseversion }}" == *-SNAPSHOT ]]; then
+            echo "Deploying SNAPSHOT version"
+            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
+          else
+            echo "Deploying RELEASE version"
+            mvn -s .mvn/.m2/settings.xml --batch-mode clean deploy -P release --no-transfer-progress -DskipTests -Dgpg.passphrase="${MAVEN_GPG_PASSPHRASE}"
+          fi
