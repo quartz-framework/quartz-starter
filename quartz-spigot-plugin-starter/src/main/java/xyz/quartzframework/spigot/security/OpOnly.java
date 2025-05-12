@@ -2,7 +2,7 @@ package xyz.quartzframework.spigot.security;
 
 import org.springframework.core.annotation.AliasFor;
 import xyz.quartzframework.core.exception.PermissionDeniedException;
-import xyz.quartzframework.core.security.PluginAuthorize;
+import xyz.quartzframework.core.security.Authorize;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -14,14 +14,14 @@ import java.lang.annotation.Target;
  */
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
-@PluginAuthorize("isOp()")
+@Authorize("isOp()")
 public @interface OpOnly {
 
     /**
      * The message to be thrown in {@link PermissionDeniedException PermissionDeniedException}
      * if the sender is not a operator.
      */
-    @AliasFor(annotation = PluginAuthorize.class, attribute = "message")
+    @AliasFor(annotation = Authorize.class, attribute = "message")
     String message() default "";
 
 }

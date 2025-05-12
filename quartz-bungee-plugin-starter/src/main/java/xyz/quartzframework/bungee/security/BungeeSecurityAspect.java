@@ -17,7 +17,7 @@ import xyz.quartzframework.bungee.session.BungeeSession;
 import xyz.quartzframework.bungee.session.BungeeSessionService;
 import xyz.quartzframework.core.exception.PermissionDeniedException;
 import xyz.quartzframework.core.exception.PlayerNotFoundException;
-import xyz.quartzframework.core.security.PluginAuthorize;
+import xyz.quartzframework.core.security.Authorize;
 import xyz.quartzframework.core.util.AopAnnotationUtils;
 
 import java.util.Map;
@@ -39,10 +39,10 @@ public class BungeeSecurityAspect {
 
     private final ExpressionParser parser = new SpelExpressionParser();
 
-    @Around("within(@(@xyz.quartzframework.core.security.PluginAuthorize *) *) " +
-            "|| execution(@(@xyz.quartzframework.core.security.PluginAuthorize *) * *(..)) " +
-            "|| @within(xyz.quartzframework.core.security.PluginAuthorize)" +
-            "|| execution(@xyz.quartzframework.core.security.PluginAuthorize * *(..))")
+    @Around("within(@(@xyz.quartzframework.core.security.Authorize *) *) " +
+            "|| execution(@(@xyz.quartzframework.core.security.Authorize *) * *(..)) " +
+            "|| @within(xyz.quartzframework.core.security.Authorize)" +
+            "|| execution(@xyz.quartzframework.core.security.Authorize * *(..))")
     public Object checkPermission(ProceedingJoinPoint joinPoint) throws Throwable {
         val sender = session.getSender();
         if (sender == null) {
@@ -54,7 +54,7 @@ public class BungeeSecurityAspect {
         IntStream.range(0, parameters.length)
                 .forEach(i -> senderContext.setVariable(parameters[i].getName(), joinPoint.getArgs()[i]));
         senderContext.setVariable("session", sessionService.current());
-        AopAnnotationUtils.getApplicableAnnotations(method, PluginAuthorize.class).forEach(pluginAuthorize -> {
+        AopAnnotationUtils.getApplicableAnnotations(method, Authorize.class).forEach(pluginAuthorize -> {
             val expressionSource = pluginAuthorize.value();
             val expression = expressionCache.computeIfAbsent(expressionSource, parser::parseExpression);
             senderContext.setVariable("params", pluginAuthorize.params());
