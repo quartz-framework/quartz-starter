@@ -11,6 +11,7 @@
     <modules>
         <module>quartz-spigot-plugin-starter</module>
         <module>quartz-bungee-plugin-starter</module>
+        <module>quartz-data-starter-jpa</module>
     </modules>
 
     <developers>
