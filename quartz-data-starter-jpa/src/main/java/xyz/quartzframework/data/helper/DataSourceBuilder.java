@@ -25,6 +25,8 @@ public class DataSourceBuilder {
                 throw new IllegalStateException("Could not determine JDBC driver: no known driver found on classpath.");
             }
             log.info("Auto-detected JDBC driver: {}", driver);
+        } else {
+            log.info("Using JDBC driver: {}", driver);
         }
         config.setJdbcUrl(jpaProps.getDatasourceUrl());
         config.setUsername(jpaProps.getDatasourceUsername());

@@ -11,7 +11,7 @@ public class JPAPersistenceProperties {
     @Property("${quartz.data.jpa.datasource.url:jdbc:h2:mem:testdb}")
     private String datasourceUrl;
 
-    @Property("${quartz.data.jpa.datasource.driver:org.h2.Driver}")
+    @Property("${quartz.data.jpa.datasource.driver:}")
     private String datasourceDriver;
 
     @Property("${quartz.data.jpa.datasource.username:sa}")

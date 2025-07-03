@@ -9,7 +9,7 @@ import xyz.quartzframework.core.property.Property;
 @Injectable
 public class HibernateProperties {
 
-    @Property("${quartz.data.hibernate.dialect:org.hibernate.dialect.H2Dialect}")
+    @Property("${quartz.data.hibernate.dialect:}")
     private String dialect;
 
     @Property("${quartz.data.hibernate.ddl-auto:none}")
