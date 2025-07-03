@@ -68,6 +68,8 @@ public class HibernateConfigurer {
                 throw new IllegalStateException("Could not determine Hibernate dialect: no known JDBC driver found on classpath.");
             }
             log.info("Auto-detected Hibernate dialect: {}", dialect);
+        } else {
+            log.info("Using Hibernate dialect: {}", dialect);
         }
         settings.put(Environment.DIALECT, dialect);
         val jtaDisabled = pluginBeanFactory.getBeansWithAnnotation(EnableTransactionalSupport.class).isEmpty();
