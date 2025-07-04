@@ -15,7 +15,6 @@ import org.hibernate.cfg.Environment;
 import org.hibernate.jpa.HibernatePersistenceProvider;
 import org.springframework.transaction.PlatformTransactionManager;
 import xyz.quartzframework.core.QuartzPlugin;
-import xyz.quartzframework.core.bean.annotation.Priority;
 import xyz.quartzframework.core.bean.annotation.Provide;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
 import xyz.quartzframework.core.condition.annotation.ActivateWhenBeanMissing;
@@ -56,14 +55,12 @@ public class DataConfigurer {
     private final JPAPersistenceProperties jpaProperties;
 
     @Provide
-    @Priority(0)
     @ActivateWhenBeanMissing(DataSource.class)
     public DataSource dataSource() {
         return DataSourceBuilder.build(jpaProperties, hikariProperties, classLoader);
     }
 
     @Provide
-    @Priority(1)
     @ActivateWhenBeanMissing(StandardServiceRegistry.class)
     StandardServiceRegistry standardServiceRegistry(DataSource dataSource) {
         val builder = new StandardServiceRegistryBuilder();
@@ -72,14 +69,12 @@ public class DataConfigurer {
     }
 
     @Provide
-    @Priority(2)
     @ActivateWhenBeanMissing(MetadataSources.class)
     MetadataSources metadataSources(StandardServiceRegistry registry) {
         return new MetadataSources(registry);
     }
 
     @Provide
-    @Priority(3)
     @ActivateWhenBeanMissing(SessionFactory.class)
     SessionFactory sessionFactory(MetadataSources sources, StorageRegistrar storageRegistrar) {
         val storages = storageRegistrar.getStorages();
@@ -97,14 +92,12 @@ public class DataConfigurer {
     }
 
     @Provide
-    @Priority(4)
     @ActivateWhenBeanMissing(HibernatePersistenceProvider.class)
     HibernatePersistenceProvider hibernatePersistenceProvider() {
         return new HibernatePersistenceProvider();
     }
 
     @Provide
-    @Priority(5)
     PersistenceUnitInfo persistenceUnitInfo(DataSource dataSource) {
         val name = "%s-default".formatted(quartzPlugin.getName().toLowerCase());
 
@@ -202,7 +195,6 @@ public class DataConfigurer {
     }
 
     @Provide
-    @Priority(6)
     @ActivateWhenBeanMissing(EntityManagerFactory.class)
     EntityManagerFactory entityManagerFactory(HibernatePersistenceProvider provider,
                                               PersistenceUnitInfo persistenceUnitInfo,
@@ -211,28 +203,24 @@ public class DataConfigurer {
     }
 
     @Provide
-    @Priority(7)
     @ActivateWhenBeanMissing(JPAStorageProvider.class)
     JPAStorageProvider jpaStorageProvider(EntityManagerFactory entityManagerFactory) {
         return new JPAStorageProvider(entityManagerFactory);
     }
 
     @Provide
-    @Priority(8)
     @ActivateWhenBeanMissing(PlatformTransactionManager.class)
     PlatformTransactionManager transactionManager(EntityManagerFactory emf) {
         return new DefaultJPATransactionManager(emf);
     }
 
     @Provide
-    @Priority(9)
     @ActivateWhenBeanMissing(TransactionalInterceptor.class)
     TransactionalInterceptor transactionInterceptor(PlatformTransactionManager transactionManager) {
         return new TransactionalInterceptor(transactionManager, pluginBeanFactory);
     }
 
     @Provide
-    @Priority(10)
     @ActivateWhenBeanMissing(TransactionCleanupInterceptor.class)
     TransactionCleanupInterceptor transactionInterceptor() {
         return new TransactionCleanupInterceptor(pluginBeanFactory);
