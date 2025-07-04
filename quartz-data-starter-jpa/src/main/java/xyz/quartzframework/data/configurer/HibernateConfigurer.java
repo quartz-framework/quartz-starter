@@ -1,34 +1,24 @@
-package xyz.quartzframework.data;
+package xyz.quartzframework.data.configurer;
 
-import jakarta.persistence.*;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.SharedCacheMode;
+import jakarta.persistence.ValidationMode;
 import jakarta.persistence.spi.ClassTransformer;
 import jakarta.persistence.spi.PersistenceUnitInfo;
 import jakarta.persistence.spi.PersistenceUnitTransactionType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
-import org.hibernate.SessionFactory;
-import org.hibernate.boot.MetadataSources;
-import org.hibernate.boot.registry.StandardServiceRegistry;
-import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
 import org.hibernate.cfg.Environment;
 import org.hibernate.jpa.HibernatePersistenceProvider;
-import org.springframework.transaction.PlatformTransactionManager;
 import xyz.quartzframework.core.QuartzPlugin;
 import xyz.quartzframework.core.bean.annotation.Provide;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.core.condition.annotation.ActivateWhenBeanMissing;
 import xyz.quartzframework.core.context.annotation.Configurer;
+import xyz.quartzframework.data.EnableTransactionalSupport;
 import xyz.quartzframework.data.helper.AutoDialectHelper;
-import xyz.quartzframework.data.helper.DataSourceBuilder;
-import xyz.quartzframework.data.interceptor.TransactionCleanupInterceptor;
-import xyz.quartzframework.data.interceptor.TransactionalInterceptor;
-import xyz.quartzframework.data.manager.DefaultJPATransactionManager;
 import xyz.quartzframework.data.properties.HibernateProperties;
-import xyz.quartzframework.data.properties.HikariProperties;
 import xyz.quartzframework.data.properties.JPAPersistenceProperties;
-import xyz.quartzframework.data.storage.JPAStorageProvider;
-import xyz.quartzframework.data.storage.StorageRegistrar;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -40,7 +30,7 @@ import java.util.*;
 @Slf4j
 @Configurer(force = true)
 @RequiredArgsConstructor
-public class DataConfigurer {
+public class HibernateConfigurer {
 
     private final QuartzPlugin<?> quartzPlugin;
 
@@ -50,49 +40,9 @@ public class DataConfigurer {
 
     private final HibernateProperties hibernateProperties;
 
-    private final HikariProperties hikariProperties;
-
     private final JPAPersistenceProperties jpaProperties;
 
     @Provide
-    @ActivateWhenBeanMissing(DataSource.class)
-    public DataSource dataSource() {
-        return DataSourceBuilder.build(jpaProperties, hikariProperties, classLoader);
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(StandardServiceRegistry.class)
-    StandardServiceRegistry standardServiceRegistry(DataSource dataSource) {
-        val builder = new StandardServiceRegistryBuilder();
-        builder.applySettings(getHibernateSettings(dataSource));
-        return builder.build();
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(MetadataSources.class)
-    MetadataSources metadataSources(StandardServiceRegistry registry) {
-        return new MetadataSources(registry);
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(SessionFactory.class)
-    SessionFactory sessionFactory(MetadataSources sources, StorageRegistrar storageRegistrar) {
-        val storages = storageRegistrar.getStorages();
-        storages.forEach(storage -> {
-            val entityClass = storage.entityClass();
-            if (!entityClass.isAnnotationPresent(Entity.class)) {
-                return;
-            }
-            sources.addAnnotatedClass(entityClass);
-        });
-        if (sources.getAnnotatedClasses().isEmpty()) {
-            log.warn("No JPA @Entity classes were registered. Are your storage interfaces correctly annotated?");
-        }
-        return sources.buildMetadata().buildSessionFactory();
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(HibernatePersistenceProvider.class)
     HibernatePersistenceProvider hibernatePersistenceProvider() {
         return new HibernatePersistenceProvider();
     }
@@ -195,35 +145,10 @@ public class DataConfigurer {
     }
 
     @Provide
-    @ActivateWhenBeanMissing(EntityManagerFactory.class)
     EntityManagerFactory entityManagerFactory(HibernatePersistenceProvider provider,
                                               PersistenceUnitInfo persistenceUnitInfo,
                                               DataSource dataSource) {
         return provider.createContainerEntityManagerFactory(persistenceUnitInfo, getHibernateSettings(dataSource));
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(JPAStorageProvider.class)
-    JPAStorageProvider jpaStorageProvider(EntityManagerFactory entityManagerFactory) {
-        return new JPAStorageProvider(entityManagerFactory);
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(PlatformTransactionManager.class)
-    PlatformTransactionManager transactionManager(EntityManagerFactory emf) {
-        return new DefaultJPATransactionManager(emf);
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(TransactionalInterceptor.class)
-    TransactionalInterceptor transactionInterceptor(PlatformTransactionManager transactionManager) {
-        return new TransactionalInterceptor(transactionManager, pluginBeanFactory);
-    }
-
-    @Provide
-    @ActivateWhenBeanMissing(TransactionCleanupInterceptor.class)
-    TransactionCleanupInterceptor transactionInterceptor() {
-        return new TransactionCleanupInterceptor(pluginBeanFactory);
     }
 
     private Map<String, Object> getHibernateSettings(DataSource dataSource) {

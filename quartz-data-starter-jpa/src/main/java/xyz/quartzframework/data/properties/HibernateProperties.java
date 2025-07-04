@@ -1,7 +1,6 @@
 package xyz.quartzframework.data.properties;
 
 import lombok.Getter;
-import lombok.Value;
 import xyz.quartzframework.core.bean.annotation.Injectable;
 import xyz.quartzframework.core.property.Property;
 
