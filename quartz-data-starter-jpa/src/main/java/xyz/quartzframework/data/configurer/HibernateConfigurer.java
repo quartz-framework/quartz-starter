@@ -1,8 +1,6 @@
 package xyz.quartzframework.data.configurer;
 
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.SharedCacheMode;
-import jakarta.persistence.ValidationMode;
+import jakarta.persistence.*;
 import jakarta.persistence.spi.ClassTransformer;
 import jakarta.persistence.spi.PersistenceUnitInfo;
 import jakarta.persistence.spi.PersistenceUnitTransactionType;
@@ -16,6 +14,8 @@ import xyz.quartzframework.core.bean.annotation.Provide;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
 import xyz.quartzframework.core.context.annotation.Configurer;
 import xyz.quartzframework.data.EnableTransactionalSupport;
+import xyz.quartzframework.data.entity.EntityDefinition;
+import xyz.quartzframework.data.entity.EntityRegistrar;
 import xyz.quartzframework.data.helper.AutoDialectHelper;
 import xyz.quartzframework.data.properties.HibernateProperties;
 import xyz.quartzframework.data.properties.JPAPersistenceProperties;
@@ -48,7 +48,7 @@ public class HibernateConfigurer {
     }
 
     @Provide
-    PersistenceUnitInfo persistenceUnitInfo(DataSource dataSource) {
+    PersistenceUnitInfo persistenceUnitInfo(DataSource dataSource, EntityRegistrar entityRegistrar) {
         val name = "%s-default".formatted(quartzPlugin.getName().toLowerCase());
 
         return new PersistenceUnitInfo() {
@@ -124,22 +124,29 @@ public class HibernateConfigurer {
 
             @Override
             public List<String> getManagedClassNames() {
-                return List.of();
+                val entities = entityRegistrar.getEntities()
+                        .stream()
+                        .map(EntityDefinition::className)
+                        .toList();
+                if (entities.isEmpty()) {
+                    return List.of(StubEntity.class.getName());
+                }
+                return entities;
             }
 
             @Override
             public boolean excludeUnlistedClasses() {
-                return false;
+                return hibernateProperties.isExcludeUnlistedClasses();
             }
 
             @Override
             public SharedCacheMode getSharedCacheMode() {
-                return null;
+                return SharedCacheMode.valueOf(hibernateProperties.getSharedCacheMode().toUpperCase());
             }
 
             @Override
             public ValidationMode getValidationMode() {
-                return null;
+                return ValidationMode.valueOf(hibernateProperties.getValidationMode().toUpperCase());
             }
         };
     }
@@ -176,7 +183,9 @@ public class HibernateConfigurer {
         settings.put(Environment.SHOW_SQL, hibernateProperties.isShowSql());
         settings.put(Environment.FORMAT_SQL, hibernateProperties.isFormatSql());
         settings.put(Environment.HIGHLIGHT_SQL, hibernateProperties.isHighlightSql());
-        settings.put(Environment.LOG_SLOW_QUERY, hibernateProperties.isLogSlowQuery());
+        if (hibernateProperties.getLogSlowQuery() != null && hibernateProperties.getLogSlowQuery() > 0L) {
+            settings.put(Environment.LOG_SLOW_QUERY, hibernateProperties.getLogSlowQuery());
+        }
         settings.put(Environment.USE_SQL_COMMENTS, hibernateProperties.isUseSqlComments());
         settings.put(Environment.STATEMENT_FETCH_SIZE, hibernateProperties.getFetchSize());
         settings.put(Environment.USE_SCROLLABLE_RESULTSET, hibernateProperties.isUseScrollableResultSet());
@@ -202,5 +211,13 @@ public class HibernateConfigurer {
 
     private boolean isJTADisabled() {
         return pluginBeanFactory.getBeansWithAnnotation(EnableTransactionalSupport.class).isEmpty();
+    }
+
+    @Entity
+    static class StubEntity {
+
+        @Id
+        private UUID id;
+
     }
 }

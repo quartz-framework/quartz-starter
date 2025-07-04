@@ -23,8 +23,8 @@ public class HibernateProperties {
     @Property("${quartz.data.hibernate.highlight-sql:false}")
     private boolean highlightSql;
 
-    @Property("${quartz.data.hibernate.log-slow-query:false}")
-    private boolean logSlowQuery;
+    @Property("${quartz.data.hibernate.log-slow-query:-1}")
+    private Long logSlowQuery;
 
     @Property("${quartz.data.hibernate.use-sql-comments:false}")
     private boolean useSqlComments;
@@ -52,6 +52,15 @@ public class HibernateProperties {
 
     @Property("${quartz.data.hibernate.statement-inspector:}")
     private String statementInspector;
+
+    @Property("${quartz.data.hibernate.validation-mode:AUTO}")
+    private String validationMode;
+
+    @Property("${quartz.data.hibernate.shared-cache-mode:NONE}")
+    private String sharedCacheMode;
+
+    @Property("${quartz.data.hibernate.exclude-unlisted-classes:false}")
+    private boolean excludeUnlistedClasses;
 
     @Property("${quartz.data.hibernate.dialect.native-param-markers:true}")
     private boolean dialectNativeParamMarkers;
