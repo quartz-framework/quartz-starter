@@ -8,44 +8,44 @@ import xyz.quartzframework.core.property.Property;
 @Injectable
 public class HikariProperties {
 
-    @Property("${quartz.data.hikari.minimum-idle:5}")
-    private int hikariMinimumIdle;
+    @Property("${quartz.data.hikari.minimum-idle:1}")
+    private int minimumIdle;
 
     @Property("${quartz.data.hikari.maximum-pool-size:10}")
-    private int hikariMaximumPoolSize;
+    private int maximumPoolSize;
 
     @Property("${quartz.data.hikari.connection-timeout:30000}")
-    private long hikariConnectionTimeout;
+    private long connectionTimeout;
 
     @Property("${quartz.data.hikari.idle-timeout:600000}")
-    private long hikariIdleTimeout;
+    private long idleTimeout;
 
     @Property("${quartz.data.hikari.max-lifetime:1800000}")
-    private long hikariMaxLifetime;
+    private long maxLifetime;
 
     @Property("${quartz.data.hikari.keepalive-time:0}")
-    private long hikariKeepaliveTime;
+    private long keepaliveTime;
 
     @Property("${quartz.data.hikari.leak-detection-threshold:0}")
-    private long hikariLeakDetectionThreshold;
+    private long leakDetectionThreshold;
 
     @Property("${quartz.data.hikari.validation-timeout:5000}")
-    private long hikariValidationTimeout;
+    private long validationTimeout;
 
     @Property("${quartz.data.hikari.connection-test-query:}")
-    private String hikariConnectionTestQuery;
+    private String connectionTestQuery;
 
     @Property("${quartz.data.hikari.connection-init-sql:}")
-    private String hikariConnectionInitSql;
+    private String connectionInitSql;
 
     @Property("${quartz.data.hikari.pool-name:QuartzHikariPool}")
-    private String hikariPoolName;
+    private String poolName;
 
     @Property("${quartz.data.hikari.auto-commit:true}")
-    private boolean hikariAutoCommit;
+    private boolean autoCommit;
 
     @Property("${quartz.data.hikari.read-only:false}")
-    private boolean hikariReadOnly;
+    private boolean readOnly;
 
     @Property("${quartz.data.hikari.isolate-internal-queries:false}")
     private boolean hikariIsolateInternalQueries;
@@ -56,7 +56,7 @@ public class HikariProperties {
     @Property("${quartz.data.hikari.allow-pool-suspension:false}")
     private boolean hikariAllowPoolSuspension;
 
-    @Property("${quartz.data.hikari.initialization-fail-timeout:1}")
+    @Property("${quartz.data.hikari.initialization-fail-timeout:-1}")
     private long hikariInitializationFailTimeout;
 
     @Property("${quartz.data.hikari.transaction-isolation:}")

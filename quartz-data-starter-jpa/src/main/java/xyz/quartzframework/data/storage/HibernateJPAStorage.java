@@ -2,6 +2,7 @@ package xyz.quartzframework.data.storage;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.val;
 import xyz.quartzframework.data.manager.EntityManagerContext;
@@ -20,7 +21,11 @@ public class HibernateJPAStorage<E, ID> implements JPAStorage<E, ID>, QuerySpeci
 
     private final EntityManagerFactory entityManagerFactory;
 
+    @Getter
     private final Class<E> entityClass;
+
+    @Getter
+    private final Class<ID> idClass;
 
     @Override
     public Optional<E> findById(ID id) {
@@ -43,7 +48,7 @@ public class HibernateJPAStorage<E, ID> implements JPAStorage<E, ID>, QuerySpeci
     @Override
     public E save(E entity) {
         return executeInTransaction(em -> {
-            em.persist(entity);
+            em.merge(entity);
             return entity;
         });
     }
@@ -54,7 +59,7 @@ public class HibernateJPAStorage<E, ID> implements JPAStorage<E, ID>, QuerySpeci
             List<E> saved = new ArrayList<>();
             int i = 0;
             for (E entity : entities) {
-                em.persist(entity);
+                em.merge(entity);
                 saved.add(entity);
                 if (++i % 50 == 0) em.flush();
             }
@@ -144,7 +149,7 @@ public class HibernateJPAStorage<E, ID> implements JPAStorage<E, ID>, QuerySpeci
         return executeInTransaction(em -> {
             List<E> saved = new ArrayList<>();
             for (E entity : entities) {
-                em.persist(entity);
+                em.merge(entity);
                 saved.add(entity);
             }
             em.flush();
@@ -155,38 +160,9 @@ public class HibernateJPAStorage<E, ID> implements JPAStorage<E, ID>, QuerySpeci
     @Override
     public E saveAndFlush(E entity) {
         return executeInTransaction(em -> {
-            em.persist(entity);
+            em.merge(entity);
             em.flush();
             return entity;
-        });
-    }
-
-    @Override
-    public E merge(E entity) {
-        return executeInTransaction(em -> em.merge(entity));
-    }
-
-    @Override
-    public void detach(E entity) {
-        execute(em -> {
-            em.detach(entity);
-            return null;
-        });
-    }
-
-    @Override
-    public void clear() {
-        execute(em -> {
-            em.clear();
-            return null;
-        });
-    }
-
-    @Override
-    public void refresh(E entity) {
-        executeInTransaction(em -> {
-            em.refresh(entity);
-            return null;
         });
     }
 

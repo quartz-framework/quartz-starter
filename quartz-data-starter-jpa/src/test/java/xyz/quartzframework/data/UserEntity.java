@@ -1,8 +1,6 @@
 package xyz.quartzframework.data;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
@@ -25,4 +23,14 @@ public class UserEntity {
     private boolean enabled;
 
     private Instant createdAt;
+
+    @OneToOne(mappedBy = "user")
+    private UserProfile profile;
+
+    public UserEntity(UUID id, String username, boolean enabled, Instant createdAt) {
+        this.id = id;
+        this.username = username;
+        this.enabled = enabled;
+        this.createdAt = createdAt;
+    }
 }

@@ -4,55 +4,53 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.TypedQuery;
 import jakarta.persistence.criteria.*;
-import jakarta.persistence.criteria.Order;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
+import xyz.quartzframework.core.common.Pair;
 import xyz.quartzframework.data.page.Page;
 import xyz.quartzframework.data.page.Pagination;
 import xyz.quartzframework.data.util.ParameterBindingUtil;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @RequiredArgsConstructor
+@SuppressWarnings("unchecked")
 public class JPAQueryExecutor<E> implements QueryExecutor<E> {
 
     private final EntityManagerFactory entityManagerFactory;
-
     private final Class<E> entityClass;
 
     @Override
-    public List<E> find(DynamicQueryDefinition query, Object[] args) {
+    public <R> List<R> find(DynamicQueryDefinition query, Object[] args) {
         try (val em = entityManagerFactory.createEntityManager()) {
-            if (query.nativeSQL() && query.raw() != null) {
-                return executeNativeQuery(em, query, args);
+            if (query.raw() != null) {
+                return executeRawQuery(em, query, args);
             }
             val jpaQuery = buildJpaQuery(em, query, args);
             if (query.limit() != null) jpaQuery.setMaxResults(query.limit());
-            return jpaQuery.getResultList();
+            return (List<R>) jpaQuery.getResultList();
         }
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public Page<E> find(DynamicQueryDefinition query, Object[] args, Pagination pagination) {
+    public <R> Page<R> find(DynamicQueryDefinition query, Object[] args, Pagination pagination) {
         try (val em = entityManagerFactory.createEntityManager()) {
-            if (query.nativeSQL() && query.raw() != null) {
-                val nativeQuery = em.createNativeQuery(query.raw(), entityClass);
-                bindParameters(nativeQuery, query, args);
-                nativeQuery.setFirstResult(pagination.offset());
-                nativeQuery.setMaxResults(pagination.size());
-                List<E> items = nativeQuery.getResultList();
+            if (query.raw() != null) {
+                val typedQuery = buildRawQuery(em, query, args);
+                typedQuery.setFirstResult(pagination.offset());
+                typedQuery.setMaxResults(pagination.size());
+                List<R> items = (List<R>) typedQuery.getResultList();
                 long total = count(query, args);
                 return Page.of(items, pagination, (int) total);
             }
             val jpaQuery = buildJpaQuery(em, query, args);
             jpaQuery.setFirstResult(pagination.offset());
             jpaQuery.setMaxResults(pagination.size());
-            List<E> items = jpaQuery.getResultList();
+            List<R> items = (List<R>) jpaQuery.getResultList();
             long total = count(query, args);
             return Page.of(items, pagination, (int) total);
         }
@@ -61,16 +59,23 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
     @Override
     public long count(DynamicQueryDefinition query, Object[] args) {
         try (val em = entityManagerFactory.createEntityManager()) {
-            if (query.nativeSQL() && query.raw() != null) {
-                val nativeQuery = em.createNativeQuery(query.raw());
-                bindParameters(nativeQuery, query, args);
-                Object result = nativeQuery.getSingleResult();
-                return ((Number) result).longValue();
+            if (query.raw() != null) {
+                val rawQuery = buildRawCountQuery(em, query, args);
+                val result = rawQuery.getResultList();
+                if (result.isEmpty()) return 0;
+                Object first = result.get(0);
+                if (first instanceof Object[] arr && arr.length == 1 && arr[0] instanceof Number n) {
+                    return n.longValue();
+                }
+                if (first instanceof Number n) {
+                    return n.longValue();
+                }
+                throw new IllegalStateException("Expected count query to return a number, got: " + first);
             }
             val cb = em.getCriteriaBuilder();
             val cq = cb.createQuery(Long.class);
             val root = cq.from(entityClass);
-            cq.select(cb.count(root)).where(buildPredicates(query, cb, root, query.conditions(), args));
+            cq.select(query.distinct() ? cb.countDistinct(root) : cb.count(root)).where(buildPredicates(query, cb, root, query.queryConditions(), args));
             return em.createQuery(cq).getSingleResult();
         }
     }
@@ -78,63 +83,79 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
     @Override
     public boolean exists(DynamicQueryDefinition query, Object[] args) {
         try (val em = entityManagerFactory.createEntityManager()) {
-            if (query.nativeSQL() && query.raw() != null) {
-                val nativeQuery = em.createNativeQuery(query.raw());
-                bindParameters(nativeQuery, query, args);
-                Object result = nativeQuery.getSingleResult();
-                return ((Number) result).intValue() > 0;
+            if (query.raw() != null) {
+                val q = buildRawQuery(em, query, args);
+                Object result = q.setMaxResults(1).getSingleResult();
+                if (result instanceof Boolean b) return b;
+                if (result instanceof Number n) return n.longValue() > 0;
+                throw new IllegalStateException("Expected exists query to return boolean or number, got: " + result);
             }
-            val cb = em.getCriteriaBuilder();
-            val cq = cb.createQuery(Long.class);
-            val root = cq.from(entityClass);
-            cq.select(cb.count(root)).where(buildPredicates(query, cb, root, query.conditions(), args));
-            Long count = em.createQuery(cq).setMaxResults(1).getSingleResult();
-            return count != null && count > 0;
+            return count(query, args) > 0;
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private List<E> executeNativeQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
-        val sql = query.raw();
-        val nativeQuery = switch (query.action()) {
-            case COUNT, EXISTS -> em.createNativeQuery(sql);
-            default -> em.createNativeQuery(sql, entityClass);
-        };
-        bindParameters(nativeQuery, query, args);
+    private <R> List<R> executeRawQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
+        val typedQuery = buildRawQuery(em, query, args);
+        if (query.limit() != null && !query.raw().toLowerCase().contains("limit")) {
+            typedQuery.setMaxResults(query.limit());
+        }
+        return (List<R>) typedQuery.getResultList();
+    }
 
-        if (query.action() == QueryAction.COUNT) {
-            Object rawResult = nativeQuery.getSingleResult();
-            long count = ((Number) rawResult).longValue();
-            return List.of((E) Long.valueOf(count));
+    private <R> TypedQuery<R> buildRawQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
+        TypedQuery<?> typedQuery;
+
+        if (query.nativeSQL()) {
+            if (query.returnType() == Object[].class) {
+                typedQuery = (TypedQuery<?>) em.createNativeQuery(query.raw());
+            } else {
+                typedQuery = (TypedQuery<?>) em.createNativeQuery(query.raw(), query.returnType());
+            }
+        } else {
+            if (query.returnType() == Object[].class) {
+                typedQuery = (TypedQuery<?>) em.createQuery(query.raw());
+            } else {
+                typedQuery = em.createQuery(query.raw(), query.returnType());
+            }
         }
-        if (query.action() == QueryAction.EXISTS) {
-            Object rawResult = nativeQuery.getSingleResult();
-            boolean exists = ((Number) rawResult).intValue() > 0;
-            return List.of((E) Boolean.valueOf(exists));
-        }
-        if (query.limit() != null) nativeQuery.setMaxResults(query.limit());
-        return nativeQuery.getResultList();
+        bindParameters(typedQuery, query, args);
+        return (TypedQuery<R>) typedQuery;
+    }
+
+    private jakarta.persistence.Query buildRawCountQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
+        val rawQuery = query.nativeSQL()
+                ? em.createNativeQuery(query.raw(), Long.class)
+                : em.createQuery(query.raw(), Long.class);
+        bindParameters(rawQuery, query, args);
+        return rawQuery;
     }
 
     private TypedQuery<E> buildJpaQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
         val cb = em.getCriteriaBuilder();
         val cq = cb.createQuery(entityClass);
         val root = cq.from(entityClass);
-        cq.where(buildPredicates(query, cb, root, query.conditions(), args));
+
+        cq.where(buildPredicates(query, cb, root, query.queryConditions(), args));
+
         if (!query.orders().isEmpty()) {
             cq.orderBy(buildOrders(cb, root, query.orders()));
         }
+
+        if (query.distinct()) {
+            cq.distinct(true);
+        }
+
         return em.createQuery(cq);
     }
 
-    private Predicate[] buildPredicates(DynamicQueryDefinition query, CriteriaBuilder cb, Root<E> root, List<Condition> conditions, Object[] args) {
+    private Predicate[] buildPredicates(DynamicQueryDefinition queryDefinition, CriteriaBuilder cb, Root<E> root, List<QueryCondition> conditions, Object[] args) {
         return conditions.stream()
-                .map(cond -> buildPredicate(query, cond, cb, root, args))
+                .map(cond -> buildPredicate(queryDefinition, cb, root, cond, args))
                 .filter(Objects::nonNull)
                 .toArray(Predicate[]::new);
     }
 
-    private List<Order> buildOrders(CriteriaBuilder cb, Root<E> root, List<xyz.quartzframework.data.query.Order> orders) {
+    private List<jakarta.persistence.criteria.Order> buildOrders(CriteriaBuilder cb, Root<E> root, List<xyz.quartzframework.data.query.Order> orders) {
         return orders.stream()
                 .map(order -> order.descending()
                         ? cb.desc(root.get(order.property()))
@@ -143,35 +164,33 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
     }
 
     private void bindParameters(jakarta.persistence.Query query, DynamicQueryDefinition def, Object[] args) {
-        for (Condition cond : def.conditions()) {
+        for (QueryCondition cond : def.queryConditions()) {
             Object value;
-
-            if (cond.namedParameter() != null) {
-                value = ParameterBindingUtil.findNamedParameter(def.method(), cond.namedParameter(), args);
-                query.setParameter(cond.namedParameter(), value);
-            } else if (cond.paramIndex() != null) {
-                value = args[cond.paramIndex()];
-                query.setParameter(cond.paramIndex() + 1, value);
+            if (cond.getNamedParameter() != null) {
+                value = ParameterBindingUtil.findNamedParameter(def.method(), cond.getNamedParameter(), args);
+                query.setParameter(cond.getNamedParameter(), value);
+            } else if (cond.getParamIndex() != null) {
+                value = args[cond.getParamIndex()];
+                query.setParameter(cond.getParamIndex() + 1, value);
             }
         }
     }
 
-    @SuppressWarnings({"unchecked"})
-    private Predicate buildPredicate(DynamicQueryDefinition query, Condition cond, CriteriaBuilder cb, Root<E> root, Object[] args) {
+    private Predicate buildPredicate(DynamicQueryDefinition queryDefinition, CriteriaBuilder cb, Root<E> root, QueryCondition cond, Object[] args) {
         Object value;
-        if (cond.fixedValue() != null || cond.operation() == Operation.IS_NULL || cond.operation() == Operation.IS_NOT_NULL) {
-            value = cond.fixedValue();
-        } else if (cond.namedParameter() != null) {
-            value = ParameterBindingUtil.findNamedParameter(query.method(), cond.namedParameter(), args);
-        } else if (cond.paramIndex() != null) {
-            value = args[cond.paramIndex()];
+        if (cond.getFixedValue() != null || cond.getOperation() == Operation.IS_NULL || cond.getOperation() == Operation.IS_NOT_NULL) {
+            value = cond.getFixedValue();
+        } else if (cond.getNamedParameter() != null) {
+            value = ParameterBindingUtil.findNamedParameter(queryDefinition.method(), cond.getNamedParameter(), args);
+        } else if (cond.getParamIndex() != null) {
+            value = args[cond.getParamIndex()];
         } else {
-            throw new IllegalStateException("No param index, named parameter, or fixed value for condition: " + cond);
+            throw new IllegalStateException("Missing value for condition: " + cond);
         }
 
-        Path<?> path = resolvePath(root, cond.property());
+        Path<?> path = resolvePath(root, cond.getAttribute().name(), queryDefinition.raw());
 
-        return switch (cond.operation()) {
+        return switch (cond.getOperation()) {
             case EQUAL -> cb.equal(path, value);
             case NOT_EQUAL -> cb.notEqual(path, value);
             case LIKE -> cb.like(path.as(String.class), value.toString());
@@ -181,28 +200,74 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
             case IN -> path.in((Collection<?>) value);
             case NOT_IN -> cb.not(path.in((Collection<?>) value));
             case GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL -> {
-                @SuppressWarnings("unchecked")
-                Path<? extends Comparable<Object>> comparablePath = (Path<? extends Comparable<Object>>) path;
-                @SuppressWarnings("unchecked")
-                Comparable<Object> comparableValue = (Comparable<Object>) value;
-                yield switch (cond.operation()) {
-                    case GREATER_THAN -> cb.greaterThan(comparablePath, comparableValue);
-                    case GREATER_THAN_OR_EQUAL -> cb.greaterThanOrEqualTo(comparablePath, comparableValue);
-                    case LESS_THAN -> cb.lessThan(comparablePath, comparableValue);
-                    case LESS_THAN_OR_EQUAL -> cb.lessThanOrEqualTo(comparablePath, comparableValue);
-                    default -> throw new IllegalArgumentException("Unexpected operation: " + cond.operation());
+                Path<? extends Comparable<Object>> cmpPath = (Path<? extends Comparable<Object>>) path;
+                Comparable<Object> cmpVal = (Comparable<Object>) value;
+                yield switch (cond.getOperation()) {
+                    case GREATER_THAN -> cb.greaterThan(cmpPath, cmpVal);
+                    case GREATER_THAN_OR_EQUAL -> cb.greaterThanOrEqualTo(cmpPath, cmpVal);
+                    case LESS_THAN -> cb.lessThan(cmpPath, cmpVal);
+                    case LESS_THAN_OR_EQUAL -> cb.lessThanOrEqualTo(cmpPath, cmpVal);
+                    default -> throw new IllegalArgumentException("Unsupported operation: " + cond.getOperation());
                 };
             }
         };
     }
 
-    @SuppressWarnings("unchecked")
-    private Path<Object> resolvePath(From<?, ?> root, String propertyPath) {
+    private Path<Object> resolvePath(From<?, ?> root, String propertyPath, String rawQuery) {
         String[] parts = propertyPath.split("\\.");
-        Path<?> path = root;
-        for (String part : parts) {
-            path = path.get(part);
+        if (parts.length == 1) {
+            return root.get(parts[0]);
         }
-        return (Path<Object>) path;
+        if (rawQuery == null) {
+            Path<?> path = root;
+            for (String part : parts) {
+                path = path.get(part);
+            }
+            return (Path<Object>) path;
+        }
+        Map<String, Pair<String, JoinType>> aliasMap = extractAliases(rawQuery);
+        String alias = parts[0];
+        String property = parts[1];
+        if (!aliasMap.containsKey(alias)) {
+            throw new IllegalArgumentException("Unknown alias in query: " + alias);
+        }
+        Pair<String, JoinType> joinPath = aliasMap.get(alias);
+        if (joinPath.getFirst().isEmpty()) {
+            return root.get(property);
+        }
+        String[] joinParts = joinPath.getFirst().split("\\.");
+        From<?, ?> current = root;
+        for (int i = 1; i < joinParts.length; i++) {
+            current = current.join(joinParts[i], joinPath.getSecond());
+        }
+        return current.get(property);
+    }
+
+    private Map<String, Pair<String, JoinType>> extractAliases(String rawQuery) {
+        Map<String, Pair<String, JoinType>> aliasMap = new HashMap<>();
+        Matcher fromMatcher = Pattern.compile(
+                "(?i)from\\s+(\\w+(?:\\.\\w+)?)(?:\\s+as)?\\s+(\\w+)"
+        ).matcher(rawQuery);
+        if (fromMatcher.find()) {
+            String alias = fromMatcher.group(2);
+            aliasMap.put(alias, Pair.of("", JoinType.INNER));
+        }
+        Matcher joinMatcher = Pattern.compile(
+                "(?i)(left|inner|right|full)?\\s*join\\s+(\\w+(?:\\.\\w+)*)\\s+(?:as\\s+)?(\\w+)"
+        ).matcher(rawQuery);
+        while (joinMatcher.find()) {
+            String joinTypeRaw = joinMatcher.group(1);
+            String path = joinMatcher.group(2);
+            String alias = joinMatcher.group(3);
+            JoinType joinType = switch (joinTypeRaw == null ? "" : joinTypeRaw.toLowerCase()) {
+                case "left" -> JoinType.LEFT;
+                case "right" -> JoinType.RIGHT;
+                case "inner" -> JoinType.INNER;
+                case "full" -> JoinType.LEFT;
+                default -> JoinType.INNER;
+            };
+            aliasMap.put(alias, Pair.of(path, joinType));
+        }
+        return aliasMap;
     }
 }

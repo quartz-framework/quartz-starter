@@ -9,17 +9,25 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.hibernate.cfg.Environment;
 import org.hibernate.jpa.HibernatePersistenceProvider;
+import org.springframework.transaction.PlatformTransactionManager;
 import xyz.quartzframework.core.QuartzPlugin;
 import xyz.quartzframework.core.bean.annotation.Provide;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.core.context.annotation.Configurer;
+import xyz.quartzframework.core.context.annotation.ContextBootstrapper;
 import xyz.quartzframework.data.EnableTransactionalSupport;
 import xyz.quartzframework.data.entity.EntityDefinition;
 import xyz.quartzframework.data.entity.EntityRegistrar;
 import xyz.quartzframework.data.helper.AutoDialectHelper;
+import xyz.quartzframework.data.interceptor.TransactionCleanupInterceptor;
+import xyz.quartzframework.data.interceptor.TransactionalInterceptor;
+import xyz.quartzframework.data.manager.DefaultJPATransactionManager;
 import xyz.quartzframework.data.properties.HibernateProperties;
 import xyz.quartzframework.data.properties.JPAPersistenceProperties;
+import xyz.quartzframework.data.query.CompositeQueryParser;
+import xyz.quartzframework.data.query.HQLQueryParser;
+import xyz.quartzframework.data.query.NativeQueryParser;
 
+import javax.annotation.PostConstruct;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,9 +36,11 @@ import java.net.URLClassLoader;
 import java.util.*;
 
 @Slf4j
-@Configurer(force = true)
+@ContextBootstrapper
 @RequiredArgsConstructor
-public class HibernateConfigurer {
+public class HibernateBootstrapper {
+
+    private final CompositeQueryParser compositeQueryParser;
 
     private final QuartzPlugin<?> quartzPlugin;
 
@@ -41,6 +51,12 @@ public class HibernateConfigurer {
     private final HibernateProperties hibernateProperties;
 
     private final JPAPersistenceProperties jpaProperties;
+
+    @PostConstruct
+    public void onConstruct() {
+        compositeQueryParser.register(new HQLQueryParser());
+        compositeQueryParser.register(new NativeQueryParser());
+    }
 
     @Provide
     HibernatePersistenceProvider hibernatePersistenceProvider() {
@@ -158,11 +174,23 @@ public class HibernateConfigurer {
         return provider.createContainerEntityManagerFactory(persistenceUnitInfo, getHibernateSettings(dataSource));
     }
 
+    @Provide
+    PlatformTransactionManager transactionManager(EntityManagerFactory emf) {
+        return new DefaultJPATransactionManager(emf);
+    }
+
+    @Provide
+    TransactionalInterceptor transactionInterceptor(PlatformTransactionManager transactionManager) {
+        return new TransactionalInterceptor(transactionManager, isJTADisabled());
+    }
+
+    @Provide
+    TransactionCleanupInterceptor transactionInterceptor() {
+        return new TransactionCleanupInterceptor(isJTADisabled());
+    }
+
     private Map<String, Object> getHibernateSettings(DataSource dataSource) {
         Map<String, Object> settings = new HashMap<>();
-        settings.put(Environment.JAKARTA_JDBC_URL, jpaProperties.getDatasourceUrl());
-        settings.put(Environment.JAKARTA_JDBC_USER, jpaProperties.getDatasourceUsername());
-        settings.put(Environment.JAKARTA_JDBC_PASSWORD, jpaProperties.getDatasourcePassword());
         String dialect = hibernateProperties.getDialect();
         if (dialect == null || dialect.isBlank()) {
             dialect = AutoDialectHelper.resolveDialect(classLoader);
@@ -187,12 +215,15 @@ public class HibernateConfigurer {
             settings.put(Environment.LOG_SLOW_QUERY, hibernateProperties.getLogSlowQuery());
         }
         settings.put(Environment.USE_SQL_COMMENTS, hibernateProperties.isUseSqlComments());
-        settings.put(Environment.STATEMENT_FETCH_SIZE, hibernateProperties.getFetchSize());
+        if (hibernateProperties.getFetchSize() >= 0L) {
+            settings.put(Environment.STATEMENT_FETCH_SIZE, hibernateProperties.getFetchSize());
+        }
         settings.put(Environment.USE_SCROLLABLE_RESULTSET, hibernateProperties.isUseScrollableResultSet());
         settings.put(Environment.NON_CONTEXTUAL_LOB_CREATION, hibernateProperties.isNonContextualLobCreation());
         settings.put(Environment.LOG_JDBC_WARNINGS, hibernateProperties.isLogJdbcWarnings());
         settings.put(Environment.USE_GET_GENERATED_KEYS, hibernateProperties.isUseGetGeneratedKeys());
         settings.put(Environment.DIALECT_NATIVE_PARAM_MARKERS, hibernateProperties.isDialectNativeParamMarkers());
+        settings.put("hibernate.temp.use_jdbc_metadata_defaults", false);
         if (hibernateProperties.getJdbcTimeZone() != null && !hibernateProperties.getJdbcTimeZone().isBlank()) {
             settings.put(Environment.JDBC_TIME_ZONE, hibernateProperties.getJdbcTimeZone());
         }

@@ -14,7 +14,7 @@ public class HibernateProperties {
     @Property("${quartz.data.hibernate.ddl-auto:none}")
     private String ddlAuto;
 
-    @Property("${quartz.data.hibernate.show-sql:true}")
+    @Property("${quartz.data.hibernate.show-sql:false}")
     private boolean showSql;
 
     @Property("${quartz.data.hibernate.format-sql:false}")
@@ -23,13 +23,13 @@ public class HibernateProperties {
     @Property("${quartz.data.hibernate.highlight-sql:false}")
     private boolean highlightSql;
 
-    @Property("${quartz.data.hibernate.log-slow-query:-1}")
+    @Property("${quartz.data.hibernate.log-slow-query:0}")
     private Long logSlowQuery;
 
     @Property("${quartz.data.hibernate.use-sql-comments:false}")
     private boolean useSqlComments;
 
-    @Property("${quartz.data.hibernate.fetch-size:-1}")
+    @Property("${quartz.data.hibernate.fetch-size:0}")
     private int fetchSize;
 
     @Property("${quartz.data.hibernate.use-scrollable-resultset:true}")
@@ -64,5 +64,4 @@ public class HibernateProperties {
 
     @Property("${quartz.data.hibernate.dialect.native-param-markers:true}")
     private boolean dialectNativeParamMarkers;
-
 }
