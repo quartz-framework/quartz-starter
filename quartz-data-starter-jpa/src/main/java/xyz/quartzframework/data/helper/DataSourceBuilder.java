@@ -28,6 +28,12 @@ public class DataSourceBuilder {
         } else {
             log.info("Using JDBC driver: {}", driver);
         }
+        try {
+            Class.forName(driver);
+            log.debug("JDBC driver {} loaded", driver);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Could not load JDBC driver: " + driver, e);
+        }
         config.setJdbcUrl(jpaProps.getDatasourceUrl());
         config.setUsername(jpaProps.getDatasourceUsername());
         config.setPassword(jpaProps.getDatasourcePassword());
@@ -35,27 +41,27 @@ public class DataSourceBuilder {
         config.setMaximumPoolSize(jpaProps.getConnectionPoolSize());
         config.setAutoCommit(jpaProps.isConnectionAutocommit());
 
-        config.setMinimumIdle(hikariProps.getHikariMinimumIdle());
-        config.setMaximumPoolSize(hikariProps.getHikariMaximumPoolSize());
-        config.setConnectionTimeout(hikariProps.getHikariConnectionTimeout());
-        config.setIdleTimeout(hikariProps.getHikariIdleTimeout());
-        config.setMaxLifetime(hikariProps.getHikariMaxLifetime());
-        config.setKeepaliveTime(hikariProps.getHikariKeepaliveTime());
-        config.setLeakDetectionThreshold(hikariProps.getHikariLeakDetectionThreshold());
-        config.setValidationTimeout(hikariProps.getHikariValidationTimeout());
-        config.setAutoCommit(hikariProps.isHikariAutoCommit());
-        config.setReadOnly(hikariProps.isHikariReadOnly());
+        config.setMinimumIdle(hikariProps.getMinimumIdle());
+        config.setMaximumPoolSize(hikariProps.getMaximumPoolSize());
+        config.setConnectionTimeout(hikariProps.getConnectionTimeout());
+        config.setIdleTimeout(hikariProps.getIdleTimeout());
+        config.setMaxLifetime(hikariProps.getMaxLifetime());
+        config.setKeepaliveTime(hikariProps.getKeepaliveTime());
+        config.setLeakDetectionThreshold(hikariProps.getLeakDetectionThreshold());
+        config.setValidationTimeout(hikariProps.getValidationTimeout());
+        config.setAutoCommit(hikariProps.isAutoCommit());
+        config.setReadOnly(hikariProps.isReadOnly());
         config.setIsolateInternalQueries(hikariProps.isHikariIsolateInternalQueries());
         config.setRegisterMbeans(hikariProps.isHikariRegisterMbeans());
         config.setAllowPoolSuspension(hikariProps.isHikariAllowPoolSuspension());
         config.setInitializationFailTimeout(hikariProps.getHikariInitializationFailTimeout());
-        config.setPoolName(hikariProps.getHikariPoolName());
+        config.setPoolName(hikariProps.getPoolName());
 
-        if (!hikariProps.getHikariConnectionTestQuery().isBlank())
-            config.setConnectionTestQuery(hikariProps.getHikariConnectionTestQuery());
+        if (!hikariProps.getConnectionTestQuery().isBlank())
+            config.setConnectionTestQuery(hikariProps.getConnectionTestQuery());
 
-        if (!hikariProps.getHikariConnectionInitSql().isBlank())
-            config.setConnectionInitSql(hikariProps.getHikariConnectionInitSql());
+        if (!hikariProps.getConnectionInitSql().isBlank())
+            config.setConnectionInitSql(hikariProps.getConnectionInitSql());
 
         if (!hikariProps.getHikariTransactionIsolation().isBlank())
             config.setTransactionIsolation(hikariProps.getHikariTransactionIsolation());

@@ -2,8 +2,9 @@
     <persistence-unit name="test-unit">
         <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
         <class>xyz.quartzframework.data.UserEntity</class>
+        <class>xyz.quartzframework.data.UserProfile</class>
         <properties>
-            <property name="jakarta.persistence.jdbc.url" value="jdbc:h2:mem:test;DB_CLOSE_DELAY=-1"/>
+            <property name="jakarta.persistence.jdbc.url" value="jdbc:h2:mem:test;DB_CLOSE_DELAY=0"/>
             <property name="jakarta.persistence.jdbc.driver" value="org.h2.Driver"/>
             <property name="jakarta.persistence.jdbc.user" value="sa"/>
             <property name="jakarta.persistence.jdbc.password" value=""/>

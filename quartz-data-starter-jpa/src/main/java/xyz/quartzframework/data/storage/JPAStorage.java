@@ -15,12 +15,4 @@ public interface JPAStorage<E, ID> extends SimpleStorage<E, ID> {
 
     E saveAndFlush(E entity);
 
-    E merge(E entity);
-
-    void detach(E entity);
-
-    void clear();
-
-    void refresh(E entity);
-
 }

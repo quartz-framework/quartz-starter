@@ -8,6 +8,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
+import xyz.quartzframework.data.interceptor.TransactionCleanupInterceptor;
 import xyz.quartzframework.data.interceptor.TransactionalInterceptor;
 import xyz.quartzframework.data.manager.DefaultJPATransactionManager;
 import xyz.quartzframework.data.query.HQLQueryParser;
@@ -43,17 +44,26 @@ class UserStorageTest {
             em.persist(new UserEntity(id1, "admin", true, Instant.now().minusSeconds(1000)));
             em.persist(new UserEntity(id2, "bob", false, Instant.now().minusSeconds(500)));
             em.persist(new UserEntity(UUID.randomUUID(), "carol", true, Instant.now()));
+
+            em.persist(UserProfile.builder()
+                    .id(UUID.randomUUID())
+                    .displayName("Admin")
+                    .country("BR")
+                    .user(em.find(UserEntity.class, id1))
+                    .build());
+
             em.getTransaction().commit();
         }
-        SimpleStorage<UserEntity, UUID> target = new HibernateJPAStorage<>(emf, UserEntity.class);
+        SimpleStorage<UserEntity, UUID> target = new HibernateJPAStorage<>(emf, UserEntity.class, UUID.class);
         val interceptor = new TransactionalInterceptor(new DefaultJPATransactionManager(emf), false);
+        val cleanupInterceptor = new TransactionCleanupInterceptor(false);
         var factory = ProxyFactoryUtil.createProxyFactory(
                 new SimpleQueryParser(new HQLQueryParser(), new NativeQueryParser()),
                 target,
                 UserEntity.class,
                 UserStorage.class,
                 new JPAQueryExecutor<>(emf, UserEntity.class),
-                interceptor
+                interceptor, cleanupInterceptor
         );
         storage = (UserStorage) factory.getProxy();
     }
@@ -108,9 +118,13 @@ class UserStorageTest {
     }
 
     @Test
-    void testSaveDuplicateId() {
-        var duplicate = new UserEntity(id1, "duplicate", true, Instant.now());
-        assertThrows(Exception.class, () -> storage.save(duplicate));
+    void testSaveSameIdUpdatesRecord() {
+        var updated = new UserEntity(id1, "newName", false, Instant.now());
+        storage.save(updated);
+
+        var result = storage.findById(id1).orElseThrow();
+        assertEquals("newName", result.getUsername());
+        assertFalse(result.isEnabled());
     }
 
     @Test
@@ -119,7 +133,7 @@ class UserStorageTest {
         emf = Persistence.createEntityManagerFactory("test-unit");
         storage = (UserStorage) ProxyFactoryUtil.createProxyFactory(
                 new SimpleQueryParser(new HQLQueryParser(), new NativeQueryParser()),
-                new HibernateJPAStorage<>(emf, UserEntity.class),
+                new HibernateJPAStorage<>(emf, UserEntity.class, UUID.class),
                 UserEntity.class,
                 UserStorage.class,
                 new JPAQueryExecutor<>(emf, UserEntity.class)
@@ -130,26 +144,17 @@ class UserStorageTest {
 
     @Test
     void testDeleteUser() {
-        var em = emf.createEntityManager();
-        em.getTransaction().begin();
-        var user = em.find(UserEntity.class, id1);
-        em.remove(user);
-        em.getTransaction().commit();
-        em.close();
-
-        var found = storage.findByUsername("admin");
+        storage.deleteById(id2);
+        var found = storage.findByUsername("bob");
         assertTrue(found.isEmpty());
     }
 
     @Test
     void testUpdateUser() {
-        var em = emf.createEntityManager();
-        em.getTransaction().begin();
-        var user = em.find(UserEntity.class, id2);
-        user.setUsername("robert");
-        em.getTransaction().commit();
-        em.close();
-
+        storage.findById(id2).ifPresent(user -> {
+            user.setUsername("robert");
+            storage.save(user);
+        });
         var updated = storage.findByUsername("robert");
         assertEquals(1, updated.size());
         assertEquals("robert", updated.get(0).getUsername());
@@ -412,6 +417,261 @@ class UserStorageTest {
         service.execute(storage);
         var found = storage.findByUsername("persistedUser");
         assertEquals(1, found.size());
+    }
+
+    @Test
+    void testFindEnabledUsersWithProfile() {
+        var result = storage.findEnabledUsersWithProfile();
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).username());
+        assertEquals("Admin", result.get(0).displayName());
+    }
+
+    @Test
+    void testFindUserWithProfile() {
+        var user = storage.findUserWithProfile("admin");
+        assertNotNull(user);
+        assertEquals("admin", user.getUsername());
+        assertNotNull(user.getProfile());
+        assertEquals("Admin", user.getProfile().getDisplayName());
+    }
+
+    @Test
+    void testCountUsersPerCountry() {
+        var result = storage.countUsersPerCountry();
+        assertFalse(result.isEmpty());
+        var country = (String) result.get(0)[0];
+        var count = (Long) result.get(0)[1];
+        assertEquals("BR", country);
+        assertEquals(1L, count);
+    }
+
+    @Test
+    void testExistsUserInCountry() {
+        assertTrue(storage.existsUserInCountry("BR"));
+        assertFalse(storage.existsUserInCountry("US"));
+    }
+
+    @Test
+    void testFindUsernamesByCountry() {
+        var result = storage.findUsernamesByCountry("BR");
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0)[0]);
+        assertEquals("BR", result.get(0)[1]);
+    }
+
+    @Test
+    void testFindRecentEnabledUsersBetween() {
+        var start = Instant.now().minusSeconds(2000);
+        var end = Instant.now();
+        var result = storage.findRecentEnabledUsersBetween(start, end);
+        assertEquals(2, result.size());
+        assertTrue(result.stream().allMatch(UserEntity::isEnabled));
+    }
+
+    @Test
+    void testFindUsernamesExcluding() {
+        var result = storage.findUsernamesExcluding("c%", List.of("bob"));
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).getUsername());
+    }
+
+    @Test
+    void testExistsEnabledInCountry() {
+        assertTrue(storage.existsEnabledInCountry("BR"));
+        assertFalse(storage.existsEnabledInCountry("US"));
+    }
+
+    @Test
+    void testCountUsersFromCountry() {
+        long count = storage.countUsersFromCountry("BR");
+        assertEquals(1, count);
+    }
+
+    @Test
+    void testFindUserSummaries() {
+        var result = storage.findUserSummaries();
+        assertFalse(result.isEmpty());
+        assertEquals("admin", result.get(0).username());
+    }
+
+    @Test
+    void testNativeFindUsersByCountry() {
+        var result = storage.nativeFindUsersByCountry("BR");
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).getUsername());
+    }
+
+    @Test
+    void testNativeCountUsersCreatedToday() {
+        long count = storage.nativeCountUsersCreatedToday();
+        assertTrue(count >= 1);
+    }
+
+    @Test
+    void testFindEnabledWithDefinedCountry() {
+        var result = storage.findEnabledWithDefinedCountry();
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).getUsername());
+    }
+
+    @Test
+    void testFindUserSummariesByCountry() {
+        var result = storage.findUserSummariesByCountry("BR");
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).username());
+    }
+
+    @Test
+    void testCountEnabledUsersPerCountryExcluding() {
+        var result = storage.countEnabledUsersPerCountryExcluding(List.of("US", "AR"));
+        assertEquals(1, result.size());
+        assertEquals("BR", result.get(0)[0]);
+        assertEquals(1L, result.get(0)[1]);
+    }
+
+    @Test
+    void testExistsUsersWithPattern() {
+        assertTrue(storage.existsUsersWithPattern("a%"));
+        assertFalse(storage.existsUsersWithPattern("zzz%"));
+    }
+
+    @Test
+    void testFindRecentEnabledWithCountry() {
+        var result = storage.findRecentEnabledWithCountry();
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).getUsername());
+    }
+
+    @Test
+    void testFindUsernamesInCountries() {
+        var result = storage.findUsernamesInCountries(List.of("BR"));
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0)[0]);
+        assertEquals("BR", result.get(0)[1]);
+    }
+
+    @Test
+    void testCountUsersAfterDateByCountry() {
+        var result = storage.countUsersAfterDateByCountry(Instant.now().minusSeconds(2000));
+        assertEquals(1, result.size());
+        assertEquals("BR", result.get(0)[0]);
+        assertEquals(1L, result.get(0)[1]);
+    }
+
+    @Test
+    void testFindEnabledUsersNotInUsernames() {
+        var result = storage.findEnabledUsersNotInUsernames(List.of("carol"));
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).getUsername());
+    }
+
+    @Test
+    void testFindUserWithProfileFetched() {
+        var user = storage.findUserWithProfileFetched("admin");
+        assertNotNull(user);
+        assertEquals("admin", user.getUsername());
+        assertNotNull(user.getProfile());
+        assertEquals("Admin", user.getProfile().getDisplayName());
+    }
+
+    @Test
+    void testFindUsersWithoutProfile() {
+        var result = storage.findUsersWithoutProfile();
+        var usernames = result.stream().map(UserEntity::getUsername).toList();
+        assertTrue(usernames.contains("bob") || usernames.contains("carol"));
+    }
+
+    @Test
+    void testFindSummariesByCountryOrdered() {
+        var result = storage.findSummariesByCountryOrdered("BR");
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0).username());
+    }
+
+    @Test
+    void testFindUsersInNonExcludedCountries() {
+        var result = storage.findUsersInNonExcludedCountries(List.of("US", "AR"));
+        assertEquals(1, result.size());
+        assertEquals("admin", result.get(0)[0]);
+    }
+
+    @Test
+    void testFindDistinctCountriesOfEnabledUsers() {
+        var result = storage.findDistinctCountriesOfEnabledUsers();
+        assertTrue(result.contains("BR"));
+    }
+
+    @Test
+    void testCountDistinctProfilesOfEnabledUsers() {
+        cleanup();
+        emf = Persistence.createEntityManagerFactory("test-unit");
+        val storage = (UserStorage) ProxyFactoryUtil.createProxyFactory(
+                new SimpleQueryParser(new HQLQueryParser(), new NativeQueryParser()),
+                new HibernateJPAStorage<>(emf, UserEntity.class, UUID.class),
+                UserEntity.class,
+                UserStorage.class,
+                new JPAQueryExecutor<>(emf, UserEntity.class)
+        ).getProxy();
+        val profileStorage = (UserProfileStorage) ProxyFactoryUtil.createProxyFactory(
+                new SimpleQueryParser(new HQLQueryParser(), new NativeQueryParser()),
+                new HibernateJPAStorage<>(emf, UserProfile.class, UUID.class),
+                UserProfile.class,
+                UserProfileStorage.class,
+                new JPAQueryExecutor<>(emf, UserProfile.class)
+        ).getProxy();
+        val user1 = new UserEntity();
+        user1.setId(UUID.randomUUID());
+        user1.setUsername("enabled_with_profile");
+        user1.setEnabled(true);
+        user1.setCreatedAt(Instant.now());
+        storage.save(user1);
+
+        val profile1 = new UserProfile();
+        profile1.setId(UUID.randomUUID());
+        profile1.setDisplayName("Profile 1");
+        profile1.setCountry("BR");
+        profile1.setUser(user1);
+        profileStorage.save(profile1);
+
+        val user2 = new UserEntity();
+        user2.setId(UUID.randomUUID());
+        user2.setUsername("disabled_with_profile");
+        user2.setEnabled(false);
+        user2.setCreatedAt(Instant.now());
+        storage.save(user2);
+
+        val profile2 = new UserProfile();
+        profile2.setId(UUID.randomUUID());
+        profile2.setDisplayName("Profile 2");
+        profile2.setCountry("US");
+        profile2.setUser(user2);
+        profileStorage.save(profile2);
+
+        val user3 = new UserEntity();
+        user3.setId(UUID.randomUUID());
+        user3.setUsername("enabled_no_profile");
+        user3.setEnabled(true);
+        user3.setCreatedAt(Instant.now());
+        storage.save(user3);
+        var result = storage.findAll();
+        result.forEach(s -> System.out.println("user: " + s.toString()));
+        long count = profileStorage.countProfilesWithEnabledUsers();
+        assertEquals(1, count);
+    }
+
+    @Test
+    void testFindUsersCreatedAfterWithCountry() {
+        var result = storage.findUsersCreatedAfterWithCountry(Instant.now().minusSeconds(24000));
+        assertFalse(result.isEmpty());
+        assertTrue(result.stream().anyMatch(r -> "BR".equals(r[0])));
+        assertTrue(result.stream().anyMatch(r -> "BR".equals(r[0]) && "admin".equals(r[1])));
+    }
+
+    @Test
+    void testFindUsernamesWithCountryLike() {
+        var result = storage.findUsernamesWithCountryLike("a%");
+        assertTrue(result.contains("admin"));
     }
 
     @AfterEach

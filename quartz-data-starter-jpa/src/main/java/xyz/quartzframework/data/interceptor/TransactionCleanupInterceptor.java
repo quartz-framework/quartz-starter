@@ -4,16 +4,14 @@ import jakarta.persistence.EntityManager;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.springframework.lang.NonNull;
-import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.data.EnableTransactionalSupport;
 import xyz.quartzframework.data.manager.EntityManagerContext;
 
 public class TransactionCleanupInterceptor implements MethodInterceptor {
 
     private final boolean disabled;
 
-    public TransactionCleanupInterceptor(PluginBeanFactory pluginBeanFactory) {
-        this.disabled = pluginBeanFactory.getBeansWithAnnotation(EnableTransactionalSupport.class).isEmpty();
+    public TransactionCleanupInterceptor(boolean disabled) {
+        this.disabled = disabled;
     }
 
     @Override

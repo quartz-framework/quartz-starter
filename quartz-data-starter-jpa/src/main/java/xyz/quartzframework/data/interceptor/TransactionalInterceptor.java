@@ -9,8 +9,6 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
-import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.data.EnableTransactionalSupport;
 
 import java.lang.reflect.Method;
 
@@ -23,11 +21,6 @@ public class TransactionalInterceptor implements MethodInterceptor {
     public TransactionalInterceptor(PlatformTransactionManager txManager, boolean disabled) {
         this.txManager = txManager;
         this.disabled = disabled;
-    }
-
-    public TransactionalInterceptor(PlatformTransactionManager txManager, PluginBeanFactory pluginBeanFactory) {
-        this.txManager = txManager;
-        this.disabled = pluginBeanFactory.getBeansWithAnnotation(EnableTransactionalSupport.class).isEmpty();
     }
 
     @Override

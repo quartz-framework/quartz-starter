@@ -18,10 +18,10 @@ public interface UserStorage extends JPAStorage<UserEntity, UUID> {
 
     Optional<UserEntity> findFirstByEnabledTrueOrderByCreatedAtDesc();
 
-    @Query("from UserEntity u where u.enabled = true")
+    @Query("select count(u) from UserEntity u where u.enabled = true")
     long countByEnabledTrue();
 
-    @Query("select count(*) from users u where u.username = ?1")
+    @Query(value = "select count(*) from users u where u.username = ?1", nativeQuery = true)
     long countByUsername(String username);
 
     @Query("find where enabled = true order by createdAt desc")
@@ -74,4 +74,100 @@ public interface UserStorage extends JPAStorage<UserEntity, UUID> {
 
     @Query(value = "select * from users where username like ?1 and enabled = true order by createdAt desc limit 3", nativeQuery = true)
     List<UserEntity> nativeTop3EnabledByUsername(String pattern);
+
+    @Query("select new xyz.quartzframework.data.UserWithProfileDTO(u.id, u.username, p.displayName) " +
+            "from UserEntity u join u.profile p where u.enabled = true")
+    List<UserWithProfileDTO> findEnabledUsersWithProfile();
+
+    @Query("from UserEntity u join fetch u.profile where u.username = :username")
+    UserEntity findUserWithProfile(@QueryParameter("username") String username);
+
+    @Query("select p.country, count(u) from UserEntity u join u.profile p group by p.country")
+    List<Object[]> countUsersPerCountry();
+
+    @Query("exists where profile.country = :country")
+    boolean existsUserInCountry(@QueryParameter("country") String country);
+
+    @Query("select u.username, p.country from UserEntity u join u.profile p where p.country = :country")
+    List<Object[]> findUsernamesByCountry(@QueryParameter("country") String country);
+
+    @Query("from UserEntity u where u.createdAt >= :start and u.createdAt <= :end and u.enabled = true order by u.createdAt desc limit 10")
+    List<UserEntity> findRecentEnabledUsersBetween(@QueryParameter("start") Instant start, @QueryParameter("end") Instant end);
+
+    @Query("from UserEntity u where u.username not like :prefix and u.username not in (:list)")
+    List<UserEntity> findUsernamesExcluding(
+            @QueryParameter("prefix") String pattern,
+            @QueryParameter("list") List<String> excluded
+    );
+
+    @Query("select count(u) > 0 from UserEntity u join u.profile p where p.country = :country and u.enabled = true")
+    boolean existsEnabledInCountry(@QueryParameter("country") String country);
+
+    @Query("select count(u) from UserEntity u join u.profile p where p.country = :country")
+    long countUsersFromCountry(@QueryParameter("country") String country);
+
+    @Query("select new xyz.quartzframework.data.UserSummaryDTO(u.id, u.username, u.createdAt) from UserEntity u where u.enabled = true")
+    List<UserSummaryDTO> findUserSummaries();
+
+    @Query(value = "select u.* from users u join user_profiles p on p.user_id = u.id where p.country = ?1 order by u.createdAt desc limit 5", nativeQuery = true)
+    List<UserEntity> nativeFindUsersByCountry(String country);
+
+    @Query(value = """
+    select count(*)
+    from users
+    where createdAt >= cast(current_date as timestamp)
+      and createdAt < cast(current_date + 1 as timestamp)
+""", nativeQuery = true)
+    long nativeCountUsersCreatedToday();
+
+    @Query("from UserEntity u join u.profile p where u.enabled = true and p.country is not null order by u.createdAt desc")
+    List<UserEntity> findEnabledWithDefinedCountry();
+
+    @Query("select new xyz.quartzframework.data.UserSummaryDTO(u.id, u.username, u.createdAt) " +
+            "from UserEntity u join u.profile p where p.country = :country order by u.createdAt")
+    List<UserSummaryDTO> findUserSummariesByCountry(@QueryParameter("country") String country);
+
+    @Query("select p.country, count(u) from UserEntity u join u.profile p " +
+            "where p.country not in (:excluded) and u.enabled = true group by p.country")
+    List<Object[]> countEnabledUsersPerCountryExcluding(@QueryParameter("excluded") List<String> excludedCountries);
+
+    @Query("select count(u) > 0 from UserEntity u join u.profile p where u.username like :pattern")
+    boolean existsUsersWithPattern(@QueryParameter("pattern") String usernamePattern);
+
+    @Query("from UserEntity u join u.profile p where u.enabled = true and p.country is not null order by u.createdAt desc limit 10")
+    List<UserEntity> findRecentEnabledWithCountry();
+
+    @Query("select u.username, p.country from UserEntity u join u.profile p where p.country in (:countries)")
+    List<Object[]> findUsernamesInCountries(@QueryParameter("countries") List<String> countries);
+
+    @Query("select p.country, count(u) from UserEntity u join u.profile p where u.createdAt > :after group by p.country")
+    List<Object[]> countUsersAfterDateByCountry(@QueryParameter("after") Instant after);
+
+    @Query("from UserEntity u where u.username not in (:excluded) and u.enabled = true")
+    List<UserEntity> findEnabledUsersNotInUsernames(@QueryParameter("excluded") List<String> usernames);
+
+    @Query("from UserEntity u left join u.profile p where u.enabled = true")
+    List<Object[]> findEnabledUsersWithOrWithoutProfile();
+
+    @Query("from UserEntity u join fetch u.profile p where u.username = :username")
+    UserEntity findUserWithProfileFetched(@QueryParameter("username") String username);
+
+    @Query("from UserEntity u left join u.profile p where p.id is null")
+    List<UserEntity> findUsersWithoutProfile();
+
+    @Query("select new xyz.quartzframework.data.UserSummaryDTO(u.id, u.username, u.createdAt) " +
+            "from UserEntity u join u.profile p where p.country = :country and u.enabled = true order by u.createdAt desc")
+    List<UserSummaryDTO> findSummariesByCountryOrdered(@QueryParameter("country") String country);
+
+    @Query("select u.username, p.country from UserEntity u join u.profile p where p.country not in (:excluded)")
+    List<Object[]> findUsersInNonExcludedCountries(@QueryParameter("excluded") List<String> excludedCountries);
+
+    @Query("select distinct p.country from UserEntity u join u.profile p where u.enabled = true")
+    List<String> findDistinctCountriesOfEnabledUsers();
+
+    @Query("select p.country, u.username from UserEntity u join u.profile p where u.createdAt > :after order by p.country")
+    List<Object[]> findUsersCreatedAfterWithCountry(@QueryParameter("after") Instant after);
+
+    @Query("select u.username from UserEntity u join u.profile p where p.country is not null and u.username like :pattern")
+    List<String> findUsernamesWithCountryLike(@QueryParameter("pattern") String pattern);
 }
