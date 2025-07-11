@@ -3,7 +3,6 @@ package xyz.quartzframework.data;
 import xyz.quartzframework.data.annotation.Storage;
 import xyz.quartzframework.data.query.Query;
 import xyz.quartzframework.data.storage.JPAStorage;
-import xyz.quartzframework.data.storage.SimpleStorage;
 
 import java.util.UUID;
 

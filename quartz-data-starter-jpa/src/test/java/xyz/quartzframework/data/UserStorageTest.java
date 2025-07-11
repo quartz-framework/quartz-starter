@@ -674,6 +674,18 @@ class UserStorageTest {
         assertTrue(result.contains("admin"));
     }
 
+    @Test
+    void testFindCreatedBetweenAndProfileEmpty() {
+        var start = Instant.now().minusSeconds(2000);
+        var end = Instant.now().plusSeconds(10);
+        var result = storage.findCreatedBetweenAndProfileEmpty(start, end);
+        var usernames = result.stream().map(UserEntity::getUsername).toList();
+        assertTrue(usernames.contains("bob"));
+        assertTrue(usernames.contains("carol"));
+        assertFalse(usernames.contains("admin"));
+        assertEquals(2, usernames.size());
+    }
+
     @AfterEach
     void cleanup() {
         if (emf != null) emf.close();

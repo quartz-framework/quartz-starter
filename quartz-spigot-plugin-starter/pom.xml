@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>xyz.quartzframework</groupId>
-        <artifactId>quartz-starter</artifactId>
+        <artifactId>quartz-starter-parent</artifactId>
         <version>0.0.1-SNAPSHOT</version>
     </parent>
     <artifactId>quartz-spigot-plugin-starter</artifactId>
@@ -28,6 +28,16 @@
             <groupId>org.spigotmc</groupId>
             <artifactId>spigot-api</artifactId>
             <version>1.8.8-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>xyz.quartzframework</groupId>
+            <artifactId>quartz-core</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
     </dependencies>

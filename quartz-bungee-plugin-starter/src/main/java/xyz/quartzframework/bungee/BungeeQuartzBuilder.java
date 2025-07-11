@@ -4,8 +4,9 @@ import lombok.val;
 import net.md_5.bungee.api.plugin.Plugin;
 import xyz.quartzframework.core.QuartzApplicationBuilder;
 import xyz.quartzframework.core.QuartzPlugin;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinitionBuilder;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinitionRegistry;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.core.bean.registry.PluginBeanDefinitionRegistry;
 import xyz.quartzframework.core.bean.strategy.BeanNameStrategy;
 
 import java.net.URLClassLoader;
@@ -28,8 +29,14 @@ public final class BungeeQuartzBuilder extends QuartzApplicationBuilder<Plugin, 
     }
 
     @Override
-    public BungeeQuartzBuilder beanRegistry(PluginBeanDefinitionRegistry registry) {
-        super.beanRegistry(registry);
+    public BungeeQuartzBuilder beanDefinitionRegistry(PluginBeanDefinitionRegistry registry) {
+        super.beanDefinitionRegistry(registry);
+        return this;
+    }
+
+    @Override
+    public BungeeQuartzBuilder beanDefinitionBuilder(PluginBeanDefinitionBuilder builder) {
+        super.beanDefinitionBuilder(builder);
         return this;
     }
 

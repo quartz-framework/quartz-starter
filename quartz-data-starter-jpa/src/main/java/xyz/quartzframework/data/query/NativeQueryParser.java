@@ -33,52 +33,42 @@ public class NativeQueryParser implements QueryParser {
     @Override
     public DynamicQueryDefinition parse(Method method, StorageDefinition storageDefinition) {
         val raw = queryString(method);
-        val conditions = new ArrayList<QueryCondition>();
+        val substitutions = new ArrayList<QuerySubstitution>();
 
+        // Named parameters: :name
         val namedMatcher = Pattern.compile(":(\\w+)").matcher(raw);
         while (namedMatcher.find()) {
             String name = namedMatcher.group(1);
-            val attribute = new AttributePath(name, name, CaseFunction.NONE);
-            conditions.add(new QueryCondition(
-                    ":" + name,
-                    attribute,
-                    Operation.EQUAL,
-                    null,
-                    null,
-                    name,
-                    ":" + name,
-                    false
-            ));
+            substitutions.add(QuerySubstitution.named(name, ":" + name));
         }
+
+        // Positional parameters: ?, ?1, ?2, etc.
         val posMatcher = Pattern.compile("\\?(\\d*)").matcher(raw);
         while (posMatcher.find()) {
             String indexStr = posMatcher.group(1);
-            Integer paramIndex = indexStr.isEmpty() ? conditions.size() : Integer.parseInt(indexStr) - 1;
-            val attribute = new AttributePath("?", "param" + paramIndex, CaseFunction.NONE);
-            conditions.add(new QueryCondition(
-                    "?" + (indexStr.isEmpty() ? "" : indexStr),
-                    attribute,
-                    Operation.EQUAL,
-                    null,
-                    paramIndex,
-                    null,
-                    "?" + (indexStr.isEmpty() ? "" : indexStr),
-                    false
-            ));
+            String rawToken = posMatcher.group(0);
+            String key = indexStr.isEmpty() ? "0" : String.valueOf(Integer.parseInt(indexStr) - 1);
+            substitutions.add(QuerySubstitution.positional(key, rawToken));
         }
+
+        // Limit
         Integer limit = null;
         val limitMatcher = Pattern.compile("\\blimit\\s+(\\d+)", Pattern.CASE_INSENSITIVE).matcher(raw);
         if (limitMatcher.find()) {
             limit = Integer.parseInt(limitMatcher.group(1));
         }
+
+        // Return type inference
         Class<?> returnType = storageDefinition.entityClass();
         if (raw.toLowerCase().startsWith("select") && !raw.contains("*")) {
             returnType = Object[].class;
         }
+
         return new DynamicQueryDefinition(
                 method,
                 resolveActionFromReturnType(method),
-                conditions,
+                substitutions,
+                List.of(),
                 List.of(),
                 limit,
                 raw.toLowerCase().contains("distinct"),

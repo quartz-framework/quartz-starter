@@ -1,5 +1,6 @@
 package xyz.quartzframework.spigot.event;
 
+import io.github.classgraph.MethodInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
@@ -7,11 +8,12 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventException;
 import org.bukkit.plugin.PluginManager;
 import org.springframework.aop.support.AopUtils;
-import xyz.quartzframework.core.bean.PluginBeanDefinition;
-import xyz.quartzframework.core.bean.registry.PluginBeanDefinitionRegistry;
+import xyz.quartzframework.core.bean.BeanInjector;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinition;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinitionRegistry;
+import xyz.quartzframework.core.bean.definition.metadata.MethodMetadata;
 import xyz.quartzframework.core.event.EventPublisher;
 import xyz.quartzframework.core.task.TaskFactory;
-import xyz.quartzframework.core.util.InjectionUtil;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -30,11 +32,12 @@ public class SpigotEventPublisher implements EventPublisher {
                 .filter(PluginBeanDefinition::isInjected)
                 .filter(b -> !b.getListenMethods().isEmpty())
                 .forEach(definition -> {
-                    val instance = InjectionUtil.unwrapIfProxy(definition.getInstance());
+                    val instance = BeanInjector.unwrapIfProxy(definition.getInstance());
                     if (instance == null) return;
                     definition
                             .getListenMethods()
                             .stream()
+                            .map(MethodMetadata::getMethod)
                             .filter(m -> m.getParameterCount() == 1)
                             .filter(m -> m.getParameterTypes()[0].isAssignableFrom(event.getClass()))
                             .forEach(listener -> {

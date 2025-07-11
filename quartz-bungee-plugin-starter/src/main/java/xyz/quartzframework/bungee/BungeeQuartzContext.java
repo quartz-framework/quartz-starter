@@ -7,6 +7,6 @@ import xyz.quartzframework.core.context.AbstractQuartzContext;
 class BungeeQuartzContext extends AbstractQuartzContext<Plugin> {
 
     public BungeeQuartzContext(Class<? extends QuartzPlugin<Plugin>> pluginClass) {
-        super(pluginClass, null, null, null, null);
+        super(pluginClass, null, null, null, null, null);
     }
 }
