@@ -4,8 +4,9 @@ import lombok.val;
 import org.bukkit.plugin.java.JavaPlugin;
 import xyz.quartzframework.core.QuartzApplicationBuilder;
 import xyz.quartzframework.core.QuartzPlugin;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinitionBuilder;
+import xyz.quartzframework.core.bean.definition.PluginBeanDefinitionRegistry;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
-import xyz.quartzframework.core.bean.registry.PluginBeanDefinitionRegistry;
 import xyz.quartzframework.core.bean.strategy.BeanNameStrategy;
 
 import java.net.URLClassLoader;
@@ -28,8 +29,14 @@ public final class SpigotQuartzBuilder extends QuartzApplicationBuilder<JavaPlug
     }
 
     @Override
-    public SpigotQuartzBuilder beanRegistry(PluginBeanDefinitionRegistry registry) {
-        super.beanRegistry(registry);
+    public SpigotQuartzBuilder beanDefinitionRegistry(PluginBeanDefinitionRegistry registry) {
+        super.beanDefinitionRegistry(registry);
+        return this;
+    }
+
+    @Override
+    public SpigotQuartzBuilder beanDefinitionBuilder(PluginBeanDefinitionBuilder builder) {
+        super.beanDefinitionBuilder(builder);
         return this;
     }
 

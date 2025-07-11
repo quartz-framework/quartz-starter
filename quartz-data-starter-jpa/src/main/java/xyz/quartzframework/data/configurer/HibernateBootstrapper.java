@@ -175,7 +175,7 @@ public class HibernateBootstrapper {
     }
 
     @Provide
-    PlatformTransactionManager transactionManager(EntityManagerFactory emf) {
+    PlatformTransactionManager jpaTransactionManager(EntityManagerFactory emf) {
         return new DefaultJPATransactionManager(emf);
     }
 
@@ -185,7 +185,7 @@ public class HibernateBootstrapper {
     }
 
     @Provide
-    TransactionCleanupInterceptor transactionInterceptor() {
+    TransactionCleanupInterceptor transactionCleanupInterceptor() {
         return new TransactionCleanupInterceptor(isJTADisabled());
     }
 

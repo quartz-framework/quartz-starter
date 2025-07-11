@@ -96,7 +96,7 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
 
     private <R> List<R> executeRawQuery(EntityManager em, DynamicQueryDefinition query, Object[] args) {
         val typedQuery = buildRawQuery(em, query, args);
-        if (query.limit() != null && !query.raw().toLowerCase().contains("limit")) {
+        if (query.limit() != null && query.raw() != null && !query.raw().toLowerCase().contains("limit")) {
             typedQuery.setMaxResults(query.limit());
         }
         return (List<R>) typedQuery.getResultList();
@@ -164,28 +164,76 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
     }
 
     private void bindParameters(jakarta.persistence.Query query, DynamicQueryDefinition def, Object[] args) {
-        for (QueryCondition cond : def.queryConditions()) {
+        for (QuerySubstitution sub : def.querySubstitutions()) {
             Object value;
-            if (cond.getNamedParameter() != null) {
-                value = ParameterBindingUtil.findNamedParameter(def.method(), cond.getNamedParameter(), args);
-                query.setParameter(cond.getNamedParameter(), value);
-            } else if (cond.getParamIndex() != null) {
-                value = args[cond.getParamIndex()];
-                query.setParameter(cond.getParamIndex() + 1, value);
+
+            if (sub.isLiteral()) {
+                value = sub.getLiteralValue();
+            } else if (sub.isNamed()) {
+                String name = sub.getNameOrIndex();
+                if (name == null || name.isBlank()) {
+                    throw new IllegalArgumentException("Named parameter substitution is missing a name: " + sub);
+                }
+                value = ParameterBindingUtil.findNamedParameter(def.method(), name, args);
+                query.setParameter(name, value);
+            } else {
+                String key = sub.getNameOrIndex();
+                if (key == null || key.isBlank()) {
+                    throw new IllegalArgumentException("Positional parameter substitution is missing an index: " + sub);
+                }
+
+                int index;
+                try {
+                    index = Integer.parseInt(key);
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid positional parameter index: ?" + key, e);
+                }
+
+                if (index < 0 || index >= args.length) {
+                    throw new IllegalArgumentException("Missing argument for positional index: ?" + index);
+                }
+
+                value = args[index];
+                query.setParameter(index + 1, value);
             }
         }
     }
 
     private Predicate buildPredicate(DynamicQueryDefinition queryDefinition, CriteriaBuilder cb, Root<E> root, QueryCondition cond, Object[] args) {
         Object value;
-        if (cond.getFixedValue() != null || cond.getOperation() == Operation.IS_NULL || cond.getOperation() == Operation.IS_NOT_NULL) {
-            value = cond.getFixedValue();
-        } else if (cond.getNamedParameter() != null) {
-            value = ParameterBindingUtil.findNamedParameter(queryDefinition.method(), cond.getNamedParameter(), args);
-        } else if (cond.getParamIndex() != null) {
-            value = args[cond.getParamIndex()];
+
+        int index = queryDefinition.queryConditions().indexOf(cond);
+        if (index == -1 || index >= queryDefinition.querySubstitutions().size()) {
+            throw new IllegalStateException("No substitution found for condition: " + cond.getRawCondition());
+        }
+
+        val substitution = queryDefinition.querySubstitutions().get(index);
+
+        if (substitution.isLiteral()) {
+            value = substitution.getLiteralValue();
+        } else if (substitution.isNamed()) {
+            String name = substitution.getNameOrIndex();
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("Named parameter missing name: " + substitution);
+            }
+            value = ParameterBindingUtil.findNamedParameter(queryDefinition.method(), name, args);
+        } else if (substitution.isPositional()) {
+            String key = substitution.getNameOrIndex();
+            if (key == null || key.isBlank()) {
+                throw new IllegalArgumentException("Positional parameter missing index: " + substitution);
+            }
+            int paramIndex;
+            try {
+                paramIndex = Integer.parseInt(key);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid positional index: ?" + key, e);
+            }
+            if (paramIndex < 0 || paramIndex >= args.length) {
+                throw new IllegalArgumentException("Missing argument at index: ?" + paramIndex);
+            }
+            value = args[paramIndex];
         } else {
-            throw new IllegalStateException("Missing value for condition: " + cond);
+            throw new IllegalStateException("Unrecognized substitution: " + substitution);
         }
 
         Path<?> path = resolvePath(root, cond.getAttribute().name(), queryDefinition.raw());
@@ -193,21 +241,34 @@ public class JPAQueryExecutor<E> implements QueryExecutor<E> {
         return switch (cond.getOperation()) {
             case EQUAL -> cb.equal(path, value);
             case NOT_EQUAL -> cb.notEqual(path, value);
-            case LIKE -> cb.like(path.as(String.class), value.toString());
-            case NOT_LIKE -> cb.notLike(path.as(String.class), value.toString());
+            case LIKE -> cb.like(path.as(String.class), String.valueOf(value));
+            case NOT_LIKE -> cb.notLike(path.as(String.class), String.valueOf(value));
             case IS_NULL -> cb.isNull(path);
             case IS_NOT_NULL -> cb.isNotNull(path);
-            case IN -> path.in((Collection<?>) value);
-            case NOT_IN -> cb.not(path.in((Collection<?>) value));
+            case IN -> {
+                if (!(value instanceof Collection<?> col)) {
+                    throw new IllegalArgumentException("IN expects Collection, got: " + value);
+                }
+                yield path.in(col);
+            }
+            case NOT_IN -> {
+                if (!(value instanceof Collection<?> col)) {
+                    throw new IllegalArgumentException("NOT IN expects Collection, got: " + value);
+                }
+                yield cb.not(path.in(col));
+            }
             case GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL -> {
+                if (!(value instanceof Comparable<?> cmp)) {
+                    throw new IllegalArgumentException("Comparison expects Comparable, got: " + value);
+                }
                 Path<? extends Comparable<Object>> cmpPath = (Path<? extends Comparable<Object>>) path;
-                Comparable<Object> cmpVal = (Comparable<Object>) value;
+                Comparable<Object> cmpVal = (Comparable<Object>) cmp;
                 yield switch (cond.getOperation()) {
                     case GREATER_THAN -> cb.greaterThan(cmpPath, cmpVal);
                     case GREATER_THAN_OR_EQUAL -> cb.greaterThanOrEqualTo(cmpPath, cmpVal);
                     case LESS_THAN -> cb.lessThan(cmpPath, cmpVal);
                     case LESS_THAN_OR_EQUAL -> cb.lessThanOrEqualTo(cmpPath, cmpVal);
-                    default -> throw new IllegalArgumentException("Unsupported operation: " + cond.getOperation());
+                    default -> throw new IllegalArgumentException("Invalid op: " + cond.getOperation());
                 };
             }
         };

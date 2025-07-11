@@ -7,10 +7,7 @@ import xyz.quartzframework.data.storage.StorageDefinition;
 import xyz.quartzframework.data.util.ParameterBindingUtil;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,10 +30,7 @@ public class HQLQueryParser implements QueryParser {
     @Override
     public String queryString(Method method) {
         val annotation = method.getAnnotation(Query.class);
-        if (annotation == null) {
-            return null;
-        }
-        return annotation.value();
+        return annotation != null ? annotation.value() : null;
     }
 
     @Override
@@ -44,20 +38,25 @@ public class HQLQueryParser implements QueryParser {
         val query = queryString(method);
         Set<String> aliases = extractAliases(query);
         val conditions = new ArrayList<QueryCondition>();
+        val substitutions = new ArrayList<QuerySubstitution>();
         val orders = new ArrayList<Order>();
         Integer limit = null;
+
         val whereStart = query.toLowerCase().indexOf("where");
         val orderStart = query.toLowerCase().indexOf("order by");
         String whereClause = null;
+
         if (whereStart >= 0) {
             whereClause = (orderStart > whereStart)
                     ? query.substring(whereStart + 5, orderStart).trim()
                     : query.substring(whereStart + 5).trim();
         }
+
         if (whereClause != null) {
-            val queryConditions = parseConditions(whereClause, aliases);
+            val queryConditions = parseConditions(whereClause, aliases, substitutions);
             conditions.addAll(queryConditions);
         }
+
         if (orderStart >= 0) {
             String orderPart = query.substring(orderStart + "order by".length()).trim();
             String[] orderTokens = orderPart.split(",");
@@ -68,6 +67,7 @@ public class HQLQueryParser implements QueryParser {
                 orders.add(new Order(property, desc));
             }
         }
+
         int limitStart = query.toLowerCase().lastIndexOf("limit ");
         if (limitStart >= 0) {
             try {
@@ -77,8 +77,10 @@ public class HQLQueryParser implements QueryParser {
                 throw new IllegalArgumentException("Invalid LIMIT value in query: " + query, e);
             }
         }
+
         QueryAction action = resolveActionFromReturnType(method, query);
         Class<?> returnType;
+
         Matcher selectNew = Pattern.compile("(?i)select\\s+new\\s+([\\w.]+)\\s*\\(").matcher(query);
         if (selectNew.find()) {
             try {
@@ -93,29 +95,28 @@ public class HQLQueryParser implements QueryParser {
         } else {
             returnType = storageDefinition.entityClass();
         }
-        val isDistinct = query.toLowerCase().contains("distinct");
-        val def = new DynamicQueryDefinition(method, action, conditions, orders, limit, isDistinct, false, query, returnType, null);
+
+        boolean isDistinct = query.toLowerCase().contains("distinct");
+
+        val def = new DynamicQueryDefinition(
+                method,
+                action,
+                substitutions,
+                conditions,
+                orders,
+                limit,
+                isDistinct,
+                false,
+                query,
+                returnType,
+                null
+        );
+
         ParameterBindingUtil.validateNamedParameters(method, def);
         return def;
     }
 
-    private QueryAction resolveActionFromReturnType(Method method, String query) {
-        val returnType = method.getReturnType();
-        String q = query.toLowerCase().trim();
-
-        if (returnType == boolean.class || returnType == Boolean.class) {
-            return QueryAction.EXISTS;
-        }
-
-        if ((returnType == long.class || returnType == Long.class || Number.class.isAssignableFrom(returnType))
-                && q.contains("count(")) {
-            return QueryAction.COUNT;
-        }
-
-        return QueryAction.FIND;
-    }
-
-    private List<QueryCondition> parseConditions(String whereClause, Set<String> aliases) {
+    private List<QueryCondition> parseConditions(String whereClause, Set<String> aliases, List<QuerySubstitution> substitutions) {
         List<QueryCondition> conditions = new ArrayList<>();
         String[] tokens = whereClause.split("(?i)\\s+(and|or)\\s+");
         Matcher connectorMatcher = Pattern.compile("(?i)\\s+(and|or)\\s+").matcher(whereClause);
@@ -128,10 +129,12 @@ public class HQLQueryParser implements QueryParser {
         for (int i = 0; i < tokens.length; i++) {
             String expr = tokens[i].trim();
             try {
-                QueryCondition cond = parseSingleCondition(expr, aliases);
+                QueryCondition cond = parseSingleCondition(expr, aliases, substitutions);
                 cond.setOr(lastWasOr);
                 conditions.add(cond);
-            } catch (IllegalArgumentException ignored) {}
+            } catch (IllegalArgumentException e) {
+                tryAddFallbackSubstitution(expr, substitutions);
+            }
             if (i < connectors.size()) {
                 lastWasOr = connectors.get(i).equalsIgnoreCase("or");
             }
@@ -139,7 +142,20 @@ public class HQLQueryParser implements QueryParser {
         return conditions;
     }
 
-    private QueryCondition parseSingleCondition(String expr, Set<String> aliases) {
+    private void tryAddFallbackSubstitution(String expr, List<QuerySubstitution> substitutions) {
+        Matcher fallbackMatcher = Pattern.compile("(?i)(:\\w+|\\?\\d*|\\?)").matcher(expr);
+        while (fallbackMatcher.find()) {
+            String token = fallbackMatcher.group(1);
+            if (token.startsWith(":")) {
+                substitutions.add(QuerySubstitution.named(token.substring(1), token));
+            } else if (token.startsWith("?")) {
+                String idx = token.length() == 1 ? "0" : String.valueOf(Integer.parseInt(token.substring(1)) - 1);
+                substitutions.add(QuerySubstitution.positional(idx, token));
+            }
+        }
+    }
+
+    private QueryCondition parseSingleCondition(String expr, Set<String> aliases, List<QuerySubstitution> substitutions) {
         Pattern condPattern = Pattern.compile(
                 "(lower\\([\\w.]+\\)|upper\\([\\w.]+\\)|[\\w.]+)\\s*" +
                         "(not like|not in|is not null|is null|>=|<=|!=|<>|=|>|<|like|in)\\s*" +
@@ -181,32 +197,37 @@ public class HQLQueryParser implements QueryParser {
             default -> throw new IllegalArgumentException("Unknown operator: " + operator);
         };
 
-        Integer paramIndex = null;
-        Object fixedValue = null;
-        String namedParameter = null;
+        boolean expectsValue = switch (op) {
+            case IS_NULL, IS_NOT_NULL -> false;
+            default -> true;
+        };
 
-        if (rawValue != null) {
+        if (expectsValue && rawValue != null) {
             String val = extractInner(rawValue);
             if (val.startsWith("?")) {
-                paramIndex = val.length() == 1 ? 0 : Integer.parseInt(val.substring(1)) - 1;
+                String idx = val.length() == 1 ? "0" : String.valueOf(Integer.parseInt(val.substring(1)) - 1);
+                substitutions.add(QuerySubstitution.positional(idx, rawValue));
             } else if (val.startsWith(":")) {
-                namedParameter = val.substring(1);
+                substitutions.add(QuerySubstitution.named(val.substring(1), rawValue));
             } else if (rawValue.equalsIgnoreCase("true")) {
-                fixedValue = Boolean.TRUE;
+                substitutions.add(QuerySubstitution.literal(true, rawValue));
             } else if (rawValue.equalsIgnoreCase("false")) {
-                fixedValue = Boolean.FALSE;
+                substitutions.add(QuerySubstitution.literal(false, rawValue));
+            } else if (rawValue.equalsIgnoreCase("null")) {
+                substitutions.add(QuerySubstitution.literal(null, rawValue));
             } else if (rawValue.startsWith("'") && rawValue.endsWith("'")) {
-                fixedValue = rawValue.substring(1, rawValue.length() - 1);
+                substitutions.add(QuerySubstitution.literal(rawValue.substring(1, rawValue.length() - 1), rawValue));
             } else if (rawValue.startsWith("(") && rawValue.endsWith(")")) {
                 String inner = rawValue.substring(1, rawValue.length() - 1).trim();
                 if (inner.startsWith("?")) {
-                    paramIndex = inner.length() == 1 ? 0 : Integer.parseInt(inner.substring(1)) - 1;
+                    String idx = inner.length() == 1 ? "0" : String.valueOf(Integer.parseInt(inner.substring(1)) - 1);
+                    substitutions.add(QuerySubstitution.positional(idx, rawValue));
                 } else if (inner.startsWith(":")) {
-                    namedParameter = inner.substring(1);
+                    substitutions.add(QuerySubstitution.named(inner.substring(1), rawValue));
                 } else {
                     throw new IllegalArgumentException("Unsupported IN/NOT IN value: " + rawValue);
                 }
-            } else if (!rawValue.equalsIgnoreCase("null")) {
+            } else {
                 throw new IllegalArgumentException("Unsupported value literal: " + rawValue);
             }
         }
@@ -215,9 +236,6 @@ public class HQLQueryParser implements QueryParser {
                 rawCondition,
                 attribute,
                 op,
-                fixedValue,
-                paramIndex,
-                namedParameter,
                 rawValue,
                 ignoreCase
         );
@@ -280,5 +298,21 @@ public class HQLQueryParser implements QueryParser {
             else result.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1).toLowerCase());
         }
         return result.toString();
+    }
+
+    private QueryAction resolveActionFromReturnType(Method method, String query) {
+        val returnType = method.getReturnType();
+        String q = query.toLowerCase().trim();
+
+        if (returnType == boolean.class || returnType == Boolean.class) {
+            return QueryAction.EXISTS;
+        }
+
+        if ((returnType == long.class || returnType == Long.class || Number.class.isAssignableFrom(returnType))
+                && q.contains("count(")) {
+            return QueryAction.COUNT;
+        }
+
+        return QueryAction.FIND;
     }
 }

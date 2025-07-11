@@ -7,6 +7,6 @@ import xyz.quartzframework.core.context.AbstractQuartzContext;
 class SpigotQuartzContext extends AbstractQuartzContext<JavaPlugin> {
 
     public SpigotQuartzContext(Class<? extends QuartzPlugin<JavaPlugin>> pluginClass) {
-        super(pluginClass, null, null, null, null);
+        super(pluginClass, null, null, null, null,null);
     }
 }

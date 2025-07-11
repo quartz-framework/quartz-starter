@@ -4,11 +4,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 import org.bukkit.event.Listener;
+import xyz.quartzframework.core.bean.BeanInjector;
 import xyz.quartzframework.core.bean.annotation.Inject;
 import xyz.quartzframework.core.bean.annotation.NoProxy;
 import xyz.quartzframework.core.bean.factory.PluginBeanFactory;
 import xyz.quartzframework.core.context.annotation.ContextBootstrapper;
-import xyz.quartzframework.core.util.InjectionUtil;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -37,15 +37,15 @@ public class SpigotEventContextBootstrapper {
 
     @PostConstruct
     public void postConstruct() {
-        events.forEach(listener -> listenerFactory.registerEvents(InjectionUtil.unwrapIfProxy(listener)));
+        events.forEach(listener -> listenerFactory.registerEvents(BeanInjector.unwrapIfProxy(listener)));
         val registry = pluginBeanFactory.getRegistry();
         registry
                 .getBeanDefinitions()
                 .stream()
                 .filter(def -> !def.getListenMethods().isEmpty())
                 .forEach(def -> {
-                    val bean = pluginBeanFactory.getBean(def.getName(), def.getType());
-                    val realBean = InjectionUtil.unwrapIfProxy(bean);
+                    val bean = pluginBeanFactory.getBean(def.getName(), def.getTypeMetadata());
+                    val realBean = BeanInjector.unwrapIfProxy(bean);
                     listenerFactory.registerEvents(realBean);
                     if (!(bean instanceof Listener)) {
                         dynamicListeners.add(new Listener() {});

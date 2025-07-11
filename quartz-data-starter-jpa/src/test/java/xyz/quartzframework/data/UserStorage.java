@@ -170,4 +170,7 @@ public interface UserStorage extends JPAStorage<UserEntity, UUID> {
 
     @Query("select u.username from UserEntity u join u.profile p where p.country is not null and u.username like :pattern")
     List<String> findUsernamesWithCountryLike(@QueryParameter("pattern") String pattern);
+
+    @Query("from UserEntity u where u.createdAt between :start and :end and u.profile is null")
+    List<UserEntity> findCreatedBetweenAndProfileEmpty(@QueryParameter("start") Instant start, @QueryParameter("end") Instant end);
 }

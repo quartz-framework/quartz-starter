@@ -48,7 +48,7 @@
         <mariadb.version>3.3.2</mariadb.version>
         <sql-server.version>12.6.1.jre11</sql-server.version>
         <h2-db.version>2.2.224</h2-db.version>
-        <flyway.version>10.14.0</flyway.version>
+        <flyway.version>9.22.3</flyway.version>
         <junit.version>5.10.2</junit.version>
         <minedown.version>1.7.1-SNAPSHOT</minedown.version>
     </properties>
